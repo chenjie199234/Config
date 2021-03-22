@@ -13,6 +13,7 @@ import (
 
 var RpcPathSconfigSinfo = "/config.Sconfig/Sinfo"
 var RpcPathSconfigSset = "/config.Sconfig/Sset"
+var RpcPathSconfigSrollback = "/config.Sconfig/Srollback"
 var RpcPathSconfigSget = "/config.Sconfig/Sget"
 var RpcPathSconfigSgroups = "/config.Sconfig/Sgroups"
 var RpcPathSconfigSapps = "/config.Sconfig/Sapps"
@@ -23,6 +24,8 @@ type SconfigRpcClient interface {
 	Sinfo(context.Context, *Sinforeq) (*Sinforesp, error)
 	//set one specific app's config
 	Sset(context.Context, *Ssetreq) (*Ssetresp, error)
+	//rollback one specific app's config
+	Srollback(context.Context, *Srollbackreq) (*Srollbackresp, error)
 	//get one specific app's config
 	Sget(context.Context, *Sgetreq) (*Sgetresp, error)
 	//get all groups
@@ -67,6 +70,10 @@ func (c *sconfigRpcClient) Sinfo(ctx context.Context, req *Sinforeq) (*Sinforesp
 	if len(req.Appname) == 0 {
 		return nil, rpc.ERRREQUEST
 	}
+	//gte check
+	if float64(req.OpNum) < 0 {
+		return nil, rpc.ERRREQUEST
+	}
 	reqd, _ := proto.Marshal(req)
 	callback, e := c.cc.Call(ctx, 500000000, RpcPathSconfigSinfo, reqd, metadata.GetAllMetadata(ctx))
 	if e.(*error1.Error) != nil {
@@ -96,6 +103,33 @@ func (c *sconfigRpcClient) Sset(ctx context.Context, req *Ssetreq) (*Ssetresp, e
 		return nil, e
 	}
 	resp := new(Ssetresp)
+	if e := proto.Unmarshal(callback, resp); e != nil {
+		return nil, rpc.ERRRESPONSE
+	}
+	return resp, nil
+}
+func (c *sconfigRpcClient) Srollback(ctx context.Context, req *Srollbackreq) (*Srollbackresp, error) {
+	if req == nil {
+		return nil, rpc.ERRREQUEST
+	}
+	//empty check
+	if len(req.Groupname) == 0 {
+		return nil, rpc.ERRREQUEST
+	}
+	//empty check
+	if len(req.Appname) == 0 {
+		return nil, rpc.ERRREQUEST
+	}
+	//empty check
+	if len(req.Id) == 0 {
+		return nil, rpc.ERRREQUEST
+	}
+	reqd, _ := proto.Marshal(req)
+	callback, e := c.cc.Call(ctx, 500000000, RpcPathSconfigSrollback, reqd, metadata.GetAllMetadata(ctx))
+	if e.(*error1.Error) != nil {
+		return nil, e
+	}
+	resp := new(Srollbackresp)
 	if e := proto.Unmarshal(callback, resp); e != nil {
 		return nil, rpc.ERRRESPONSE
 	}
@@ -169,6 +203,8 @@ type SconfigRpcServer interface {
 	Sinfo(context.Context, *Sinforeq) (*Sinforesp, error)
 	//set one specific app's config
 	Sset(context.Context, *Ssetreq) (*Ssetresp, error)
+	//rollback one specific app's config
+	Srollback(context.Context, *Srollbackreq) (*Srollbackresp, error)
 	//get one specific app's config
 	Sget(context.Context, *Sgetreq) (*Sgetresp, error)
 	//get all groups
@@ -191,6 +227,11 @@ func _Sconfig_Sinfo_RpcHandler(handler func(context.Context, *Sinforeq) (*Sinfor
 		}
 		//empty check
 		if len(req.Appname) == 0 {
+			ctx.Abort(rpc.ERRREQUEST)
+			return
+		}
+		//gte check
+		if float64(req.OpNum) < 0 {
 			ctx.Abort(rpc.ERRREQUEST)
 			return
 		}
@@ -230,6 +271,40 @@ func _Sconfig_Sset_RpcHandler(handler func(context.Context, *Ssetreq) (*Ssetresp
 		}
 		if resp == nil {
 			resp = new(Ssetresp)
+		}
+		respd, _ := proto.Marshal(resp)
+		ctx.Write(respd)
+	}
+}
+func _Sconfig_Srollback_RpcHandler(handler func(context.Context, *Srollbackreq) (*Srollbackresp, error)) rpc.OutsideHandler {
+	return func(ctx *rpc.Context) {
+		req := new(Srollbackreq)
+		if e := proto.Unmarshal(ctx.GetBody(), req); e != nil {
+			ctx.Abort(rpc.ERRREQUEST)
+			return
+		}
+		//empty check
+		if len(req.Groupname) == 0 {
+			ctx.Abort(rpc.ERRREQUEST)
+			return
+		}
+		//empty check
+		if len(req.Appname) == 0 {
+			ctx.Abort(rpc.ERRREQUEST)
+			return
+		}
+		//empty check
+		if len(req.Id) == 0 {
+			ctx.Abort(rpc.ERRREQUEST)
+			return
+		}
+		resp, e := handler(ctx, req)
+		if e != nil {
+			ctx.Abort(e)
+			return
+		}
+		if resp == nil {
+			resp = new(Srollbackresp)
 		}
 		respd, _ := proto.Marshal(resp)
 		ctx.Write(respd)
@@ -319,6 +394,9 @@ func RegisterSconfigRpcServer(engine *rpc.RpcServer, svc SconfigRpcServer, allmi
 		return e
 	}
 	if e := engine.RegisterHandler(RpcPathSconfigSset, 500000000, _Sconfig_Sset_RpcHandler(svc.Sset)); e != nil {
+		return e
+	}
+	if e := engine.RegisterHandler(RpcPathSconfigSrollback, 500000000, _Sconfig_Srollback_RpcHandler(svc.Srollback)); e != nil {
 		return e
 	}
 	if e := engine.RegisterHandler(RpcPathSconfigSget, 500000000, _Sconfig_Sget_RpcHandler(svc.Sget)); e != nil {

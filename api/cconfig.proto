@@ -11,6 +11,8 @@ service cconfig{
 	rpc cinfo(cinforeq)returns(cinforesp);//method:get|timeout:500ms
 	//set one specific app's config
 	rpc cset(csetreq)returns(csetresp);//method:post|timeout:500ms
+	//rollback one specific app's config
+	rpc crollback(crollbackreq)returns(crollbackresp);//method:post|timeout:500ms
 	//get one specific app's config
 	rpc cget(cgetreq)returns(cgetresp);//method:get|timeout:500ms
 	//get all groups
@@ -28,12 +30,17 @@ service cconfig{
 message cinforeq {
 	string groupname=1;//empty:false
 	string appname=2;//empty:false
+	//check if need update
+	//if not,only op_num field will return
+	//0 will always return all data
+	int64 op_num=3;//gte:0
 }
 message cinforesp {
 	string cur_id=1;
 	string cur_config=2;
+	int64 op_num=3;
 	//ids are sortted by create time
-	repeated string all_ids=3;
+	repeated string all_ids=4;
 }
 message csetreq {
 	string groupname=1;//empty:false
@@ -41,6 +48,14 @@ message csetreq {
 	string config=3;
 }
 message csetresp {
+}
+message crollbackreq{
+	string groupname=1;//empty:false
+	string appname=2;//empty:false
+	string id=3;//empty:false
+}
+message crollbackresp{
+
 }
 message cgetreq {
 	string groupname=1;//empty:false

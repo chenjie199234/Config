@@ -11,6 +11,8 @@ service sconfig{
 	rpc sinfo(sinforeq)returns(sinforesp);//method:get|timeout:500ms
 	//set one specific app's config
 	rpc sset(ssetreq)returns(ssetresp);//method:post|timeout:500ms
+	//rollback one specific app's config
+	rpc srollback(srollbackreq)returns(srollbackresp);//method:post|timeout:500ms
 	//get one specific app's config
 	rpc sget(sgetreq)returns(sgetresp);//method:get|timeout:500ms
 	//get all groups
@@ -28,12 +30,17 @@ service sconfig{
 message sinforeq {
 	string groupname=1;//empty:false
 	string appname=2;//empty:false
+	//check if need update
+	//if not,only op_num field will return
+	//0 will always return all data
+	int64 op_num=3;//gte:0
 }
 message sinforesp {
 	string cur_id=1;
 	string cur_config=2;
+	int64 op_num=3;
 	//ids are sortted by create time
-	repeated string all_ids=3;
+	repeated string all_ids=4;
 }
 message ssetreq {
 	string groupname=1;//empty:false
@@ -41,6 +48,14 @@ message ssetreq {
 	string config=3;
 }
 message ssetresp {
+}
+message srollbackreq{
+	string groupname=1;//empty:false
+	string appname=2;//empty:false
+	string id=3;//empty:false
+}
+message srollbackresp{
+
 }
 message sgetreq {
 	string groupname=1;//empty:false

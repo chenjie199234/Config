@@ -9,25 +9,26 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-func (d *Dao) MongoGetInfo(ctx context.Context, groupname, appname string) (string, string, []string, error) {
+func (d *Dao) MongoGetInfo(ctx context.Context, groupname, appname string) (string, string, []string, int64, error) {
 	var summary struct {
 		CurId  primitive.ObjectID   `bson:"cur_id"`
 		AllIds []primitive.ObjectID `bson:"all_ids"`
+		OpNum  int64                `bson:"op_num"`
 	}
 	if e := d.mongo.Database("c_"+groupname).Collection(appname).FindOne(ctx, bson.M{"_id": 0}).Decode(&summary); e != nil {
-		return "", "", nil, e
+		return "", "", nil, 0, e
 	}
 	var infotemp struct {
 		Data string `bson:"data"`
 	}
 	if e := d.mongo.Database("c_"+groupname).Collection(appname).FindOne(ctx, bson.M{"_id": summary.CurId}).Decode(&infotemp); e != nil {
-		return "", "", nil, e
+		return "", "", nil, 0, e
 	}
 	temp := make([]string, 0, len(summary.AllIds))
 	for _, id := range summary.AllIds {
 		temp = append(temp, id.Hex())
 	}
-	return summary.CurId.Hex(), infotemp.Data, temp, nil
+	return summary.CurId.Hex(), infotemp.Data, temp, summary.OpNum, nil
 }
 
 func (d *Dao) MongoGetConfig(ctx context.Context, groupname, appname, id string) (string, error) {
@@ -65,7 +66,13 @@ func (d *Dao) MongoSetConfig(ctx context.Context, groupname, appname, config str
 		if e != nil {
 			return e
 		}
-		_, e = col.UpdateOne(sctx, bson.M{"_id": 0}, bson.M{"$set": bson.M{"_id": 0, "cur_id": r.InsertedID}, "$push": bson.M{"all_ids": r.InsertedID}}, options.Update().SetUpsert(true))
+		filter := bson.M{"_id": 0}
+		update := bson.M{
+			"$set":  bson.M{"_id": 0, "cur_id": r.InsertedID},
+			"$push": bson.M{"all_ids": r.InsertedID},
+			"$inc":  bson.M{"op_num": 1},
+		}
+		_, e = col.UpdateOne(sctx, filter, update, options.Update().SetUpsert(true))
 		if e != nil {
 			return e
 		}
@@ -76,6 +83,21 @@ func (d *Dao) MongoSetConfig(ctx context.Context, groupname, appname, config str
 	return nil
 }
 
+func (d *Dao) MongoRollbackConfig(ctx context.Context, groupname, appname, id string) error {
+	objid, e := primitive.ObjectIDFromHex(id)
+	if e != nil {
+		return e
+	}
+	filter := bson.M{"_id": 0}
+	update := bson.M{
+		"$set": bson.M{"cur_id": objid},
+		"$inc": bson.M{"op_num": 1},
+	}
+	if _, e = d.mongo.Database("c_"+groupname).Collection(appname).UpdateOne(ctx, filter, update); e != nil {
+		return e
+	}
+	return nil
+}
 func (d *Dao) MongoGetGroups(ctx context.Context) ([]string, error) {
 	result, e := d.mongo.ListDatabaseNames(ctx, bson.M{"name": bson.M{"$regex": "^c_"}})
 	if e != nil {

@@ -26,12 +26,15 @@ func Start() *Service {
 
 //one specific app's current info
 func (s *Service) Sinfo(ctx context.Context, in *api.Sinforeq) (*api.Sinforesp, error) {
-	curid, data, allids, e := s.sconfigDao.MongoGetInfo(ctx, in.Groupname, in.Appname)
+	curid, data, allids, opnum, e := s.sconfigDao.MongoGetInfo(ctx, in.Groupname, in.Appname)
 	if e != nil {
 		log.Error("[sconfig.Info] error:", e)
 		return nil, e
 	}
-	return &api.Sinforesp{CurId: curid, CurConfig: data, AllIds: allids}, nil
+	if opnum == in.OpNum && opnum != 0 {
+		return &api.Sinforesp{OpNum: opnum}, nil
+	}
+	return &api.Sinforesp{CurId: curid, CurConfig: data, AllIds: allids, OpNum: opnum}, nil
 }
 
 //set one specific app's config
@@ -42,6 +45,16 @@ func (s *Service) Sset(ctx context.Context, in *api.Ssetreq) (*api.Ssetresp, err
 		return nil, e
 	}
 	return &api.Ssetresp{}, nil
+}
+
+//rollback one specific app's config
+func (s *Service) Srollback(ctx context.Context, in *api.Srollbackreq) (*api.Srollbackresp, error) {
+	e := s.sconfigDao.MongoRollbackConfig(ctx, in.Groupname, in.Appname, in.Id)
+	if e != nil {
+		log.Error("[sconfig.Rollback] error:", e)
+		return nil, e
+	}
+	return &api.Srollbackresp{}, nil
 }
 
 //get one specific app's config

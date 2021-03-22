@@ -13,6 +13,7 @@ import (
 
 var RpcPathCconfigCinfo = "/config.Cconfig/Cinfo"
 var RpcPathCconfigCset = "/config.Cconfig/Cset"
+var RpcPathCconfigCrollback = "/config.Cconfig/Crollback"
 var RpcPathCconfigCget = "/config.Cconfig/Cget"
 var RpcPathCconfigCgroups = "/config.Cconfig/Cgroups"
 var RpcPathCconfigCapps = "/config.Cconfig/Capps"
@@ -23,6 +24,8 @@ type CconfigRpcClient interface {
 	Cinfo(context.Context, *Cinforeq) (*Cinforesp, error)
 	//set one specific app's config
 	Cset(context.Context, *Csetreq) (*Csetresp, error)
+	//rollback one specific app's config
+	Crollback(context.Context, *Crollbackreq) (*Crollbackresp, error)
 	//get one specific app's config
 	Cget(context.Context, *Cgetreq) (*Cgetresp, error)
 	//get all groups
@@ -67,6 +70,10 @@ func (c *cconfigRpcClient) Cinfo(ctx context.Context, req *Cinforeq) (*Cinforesp
 	if len(req.Appname) == 0 {
 		return nil, rpc.ERRREQUEST
 	}
+	//gte check
+	if float64(req.OpNum) < 0 {
+		return nil, rpc.ERRREQUEST
+	}
 	reqd, _ := proto.Marshal(req)
 	callback, e := c.cc.Call(ctx, 500000000, RpcPathCconfigCinfo, reqd, metadata.GetAllMetadata(ctx))
 	if e.(*error1.Error) != nil {
@@ -96,6 +103,33 @@ func (c *cconfigRpcClient) Cset(ctx context.Context, req *Csetreq) (*Csetresp, e
 		return nil, e
 	}
 	resp := new(Csetresp)
+	if e := proto.Unmarshal(callback, resp); e != nil {
+		return nil, rpc.ERRRESPONSE
+	}
+	return resp, nil
+}
+func (c *cconfigRpcClient) Crollback(ctx context.Context, req *Crollbackreq) (*Crollbackresp, error) {
+	if req == nil {
+		return nil, rpc.ERRREQUEST
+	}
+	//empty check
+	if len(req.Groupname) == 0 {
+		return nil, rpc.ERRREQUEST
+	}
+	//empty check
+	if len(req.Appname) == 0 {
+		return nil, rpc.ERRREQUEST
+	}
+	//empty check
+	if len(req.Id) == 0 {
+		return nil, rpc.ERRREQUEST
+	}
+	reqd, _ := proto.Marshal(req)
+	callback, e := c.cc.Call(ctx, 500000000, RpcPathCconfigCrollback, reqd, metadata.GetAllMetadata(ctx))
+	if e.(*error1.Error) != nil {
+		return nil, e
+	}
+	resp := new(Crollbackresp)
 	if e := proto.Unmarshal(callback, resp); e != nil {
 		return nil, rpc.ERRRESPONSE
 	}
@@ -169,6 +203,8 @@ type CconfigRpcServer interface {
 	Cinfo(context.Context, *Cinforeq) (*Cinforesp, error)
 	//set one specific app's config
 	Cset(context.Context, *Csetreq) (*Csetresp, error)
+	//rollback one specific app's config
+	Crollback(context.Context, *Crollbackreq) (*Crollbackresp, error)
 	//get one specific app's config
 	Cget(context.Context, *Cgetreq) (*Cgetresp, error)
 	//get all groups
@@ -191,6 +227,11 @@ func _Cconfig_Cinfo_RpcHandler(handler func(context.Context, *Cinforeq) (*Cinfor
 		}
 		//empty check
 		if len(req.Appname) == 0 {
+			ctx.Abort(rpc.ERRREQUEST)
+			return
+		}
+		//gte check
+		if float64(req.OpNum) < 0 {
 			ctx.Abort(rpc.ERRREQUEST)
 			return
 		}
@@ -230,6 +271,40 @@ func _Cconfig_Cset_RpcHandler(handler func(context.Context, *Csetreq) (*Csetresp
 		}
 		if resp == nil {
 			resp = new(Csetresp)
+		}
+		respd, _ := proto.Marshal(resp)
+		ctx.Write(respd)
+	}
+}
+func _Cconfig_Crollback_RpcHandler(handler func(context.Context, *Crollbackreq) (*Crollbackresp, error)) rpc.OutsideHandler {
+	return func(ctx *rpc.Context) {
+		req := new(Crollbackreq)
+		if e := proto.Unmarshal(ctx.GetBody(), req); e != nil {
+			ctx.Abort(rpc.ERRREQUEST)
+			return
+		}
+		//empty check
+		if len(req.Groupname) == 0 {
+			ctx.Abort(rpc.ERRREQUEST)
+			return
+		}
+		//empty check
+		if len(req.Appname) == 0 {
+			ctx.Abort(rpc.ERRREQUEST)
+			return
+		}
+		//empty check
+		if len(req.Id) == 0 {
+			ctx.Abort(rpc.ERRREQUEST)
+			return
+		}
+		resp, e := handler(ctx, req)
+		if e != nil {
+			ctx.Abort(e)
+			return
+		}
+		if resp == nil {
+			resp = new(Crollbackresp)
 		}
 		respd, _ := proto.Marshal(resp)
 		ctx.Write(respd)
@@ -319,6 +394,9 @@ func RegisterCconfigRpcServer(engine *rpc.RpcServer, svc CconfigRpcServer, allmi
 		return e
 	}
 	if e := engine.RegisterHandler(RpcPathCconfigCset, 500000000, _Cconfig_Cset_RpcHandler(svc.Cset)); e != nil {
+		return e
+	}
+	if e := engine.RegisterHandler(RpcPathCconfigCrollback, 500000000, _Cconfig_Crollback_RpcHandler(svc.Crollback)); e != nil {
 		return e
 	}
 	if e := engine.RegisterHandler(RpcPathCconfigCget, 500000000, _Cconfig_Cget_RpcHandler(svc.Cget)); e != nil {

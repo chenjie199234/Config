@@ -17,6 +17,7 @@ import (
 
 var WebPathSconfigSinfo = "/config.Sconfig/Sinfo"
 var WebPathSconfigSset = "/config.Sconfig/Sset"
+var WebPathSconfigSrollback = "/config.Sconfig/Srollback"
 var WebPathSconfigSget = "/config.Sconfig/Sget"
 var WebPathSconfigSgroups = "/config.Sconfig/Sgroups"
 var WebPathSconfigSapps = "/config.Sconfig/Sapps"
@@ -27,6 +28,8 @@ type SconfigWebClient interface {
 	Sinfo(context.Context, *Sinforeq) (*Sinforesp, error)
 	//set one specific app's config
 	Sset(context.Context, *Ssetreq) (*Ssetresp, error)
+	//rollback one specific app's config
+	Srollback(context.Context, *Srollbackreq) (*Srollbackresp, error)
 	//get one specific app's config
 	Sget(context.Context, *Sgetreq) (*Sgetresp, error)
 	//get all groups
@@ -60,6 +63,10 @@ func (c *sconfigWebClient) Sinfo(ctx context.Context, req *Sinforeq) (*Sinforesp
 	if len(req.Appname) == 0 {
 		return nil, fmt.Errorf("bad request:empty check failed: appname")
 	}
+	//gte check
+	if float64(req.OpNum) < 0 {
+		return nil, fmt.Errorf("bad request:gte check failed: op_num")
+	}
 	var header http.Header
 	if realcrx, ok := ctx.(*web.Context); ok {
 		header = realcrx.GetHeaders()
@@ -86,6 +93,12 @@ func (c *sconfigWebClient) Sinfo(ctx context.Context, req *Sinforeq) (*Sinforesp
 		buf.Append("=\"")
 		buf.Append(req.Appname)
 		buf.Append("\"")
+	}
+	if req.OpNum != 0 {
+		buf.Append("&")
+		buf.Append("op_num")
+		buf.Append("=")
+		buf.Append(req.OpNum)
 	}
 	if buf.Len() > 0 {
 		buf.Bytes()[0] = '?'
@@ -149,6 +162,55 @@ func (c *sconfigWebClient) Sset(ctx context.Context, req *Ssetreq) (*Ssetresp, e
 		return nil, fmt.Errorf(common.Byte2str(data))
 	}
 	resp := new(Ssetresp)
+	if len(data) > 0 {
+		if e = json.Unmarshal(data, resp); e != nil {
+			return nil, fmt.Errorf("response data format errors" + e.Error())
+		}
+	}
+	return resp, nil
+}
+func (c *sconfigWebClient) Srollback(ctx context.Context, req *Srollbackreq) (*Srollbackresp, error) {
+	if req == nil {
+		return nil, fmt.Errorf("bad request:nil")
+	}
+	//empty check
+	if len(req.Groupname) == 0 {
+		return nil, fmt.Errorf("bad request:empty check failed: groupname")
+	}
+	//empty check
+	if len(req.Appname) == 0 {
+		return nil, fmt.Errorf("bad request:empty check failed: appname")
+	}
+	//empty check
+	if len(req.Id) == 0 {
+		return nil, fmt.Errorf("bad request:empty check failed: id")
+	}
+	var header http.Header
+	if realcrx, ok := ctx.(*web.Context); ok {
+		header = realcrx.GetHeaders()
+	}
+	if header == nil {
+		header = make(http.Header)
+	}
+	if md := metadata.GetAllMetadata(ctx); len(md) != 0 {
+		d, _ := json.Marshal(md)
+		header.Set("Metadata", common.Byte2str(d))
+	}
+	header.Set("Content-Type", "application/json")
+	reqdata, _ := json.Marshal(req)
+	callback, e := c.cc.Post(ctx, 500000000, WebPathSconfigSrollback, header, reqdata)
+	if e != nil {
+		return nil, fmt.Errorf("call error:" + e.Error())
+	}
+	defer callback.Body.Close()
+	data, e := io.ReadAll(callback.Body)
+	if e != nil {
+		return nil, fmt.Errorf("read response error:" + e.Error())
+	}
+	if callback.StatusCode/100 == 5 || callback.StatusCode/100 == 4 {
+		return nil, fmt.Errorf(common.Byte2str(data))
+	}
+	resp := new(Srollbackresp)
 	if len(data) > 0 {
 		if e = json.Unmarshal(data, resp); e != nil {
 			return nil, fmt.Errorf("response data format errors" + e.Error())
@@ -330,6 +392,8 @@ type SconfigWebServer interface {
 	Sinfo(context.Context, *Sinforeq) (*Sinforesp, error)
 	//set one specific app's config
 	Sset(context.Context, *Ssetreq) (*Ssetresp, error)
+	//rollback one specific app's config
+	Srollback(context.Context, *Srollbackreq) (*Srollbackresp, error)
 	//get one specific app's config
 	Sget(context.Context, *Sgetreq) (*Sgetresp, error)
 	//get all groups
@@ -373,6 +437,12 @@ func _Sconfig_Sinfo_WebHandler(handler func(context.Context, *Sinforeq) (*Sinfor
 				buf.Append(",")
 				hasfields = true
 			}
+			if temp := ctx.GetForm("op_num"); len(temp) != 0 {
+				buf.Append("\"op_num\":")
+				buf.Append(temp)
+				buf.Append(",")
+				hasfields = true
+			}
 			if hasfields {
 				buf.Bytes()[buf.Len()-1] = '}'
 			} else {
@@ -394,6 +464,11 @@ func _Sconfig_Sinfo_WebHandler(handler func(context.Context, *Sinforeq) (*Sinfor
 		//empty check
 		if len(req.Appname) == 0 {
 			ctx.WriteString(http.StatusBadRequest, "bad request:empty check failed: appname")
+			return
+		}
+		//gte check
+		if float64(req.OpNum) < 0 {
+			ctx.WriteString(http.StatusBadRequest, "bad request:gte check failed: op_num")
 			return
 		}
 		resp, e := handler(ctx, req)
@@ -469,6 +544,86 @@ func _Sconfig_Sset_WebHandler(handler func(context.Context, *Ssetreq) (*Ssetresp
 		//empty check
 		if len(req.Appname) == 0 {
 			ctx.WriteString(http.StatusBadRequest, "bad request:empty check failed: appname")
+			return
+		}
+		resp, e := handler(ctx, req)
+		if e != nil {
+			ctx.WriteString(http.StatusInternalServerError, e.Error())
+		} else if resp == nil {
+			ctx.WriteString(http.StatusOK, "{}")
+		} else {
+			respd, _ := json.Marshal(resp)
+			ctx.Write(http.StatusOK, respd)
+		}
+	}
+}
+func _Sconfig_Srollback_WebHandler(handler func(context.Context, *Srollbackreq) (*Srollbackresp, error)) web.OutsideHandler {
+	return func(ctx *web.Context) {
+		req := new(Srollbackreq)
+		if ctx.GetMethod() != http.MethodGet && ctx.GetContentType() == "application/json" {
+			data, e := ctx.GetBody()
+			if e != nil {
+				ctx.WriteString(http.StatusInternalServerError, "server error:read request body error:"+e.Error())
+				return
+			}
+			if len(data) != 0 {
+				if e := json.Unmarshal(data, req); e != nil {
+					ctx.WriteString(http.StatusBadRequest, "bad request:json format error:"+e.Error())
+					return
+				}
+			}
+		} else {
+			if e := ctx.ParseForm(); e != nil {
+				ctx.WriteString(http.StatusBadRequest, "bad request:form format error:"+e.Error())
+				return
+			}
+			buf := bufpool.GetBuffer()
+			buf.Append("{")
+			hasfields := false
+			if temp := ctx.GetForm("groupname"); len(temp) != 0 {
+				buf.Append("\"groupname\":")
+				buf.Append(temp)
+				buf.Append(",")
+				hasfields = true
+			}
+			if temp := ctx.GetForm("appname"); len(temp) != 0 {
+				buf.Append("\"appname\":")
+				buf.Append(temp)
+				buf.Append(",")
+				hasfields = true
+			}
+			if temp := ctx.GetForm("id"); len(temp) != 0 {
+				buf.Append("\"id\":")
+				buf.Append(temp)
+				buf.Append(",")
+				hasfields = true
+			}
+			if hasfields {
+				buf.Bytes()[buf.Len()-1] = '}'
+			} else {
+				buf.Append("}")
+			}
+			if buf.Len() > 2 {
+				if e := json.Unmarshal(buf.Bytes(), req); e != nil {
+					ctx.WriteString(http.StatusBadRequest, "bad request:form format error:"+e.Error())
+					return
+				}
+			}
+			bufpool.PutBuffer(buf)
+		}
+		//empty check
+		if len(req.Groupname) == 0 {
+			ctx.WriteString(http.StatusBadRequest, "bad request:empty check failed: groupname")
+			return
+		}
+		//empty check
+		if len(req.Appname) == 0 {
+			ctx.WriteString(http.StatusBadRequest, "bad request:empty check failed: appname")
+			return
+		}
+		//empty check
+		if len(req.Id) == 0 {
+			ctx.WriteString(http.StatusBadRequest, "bad request:empty check failed: id")
 			return
 		}
 		resp, e := handler(ctx, req)
@@ -674,6 +829,9 @@ func RegisterSconfigWebServer(engine *web.WebServer, svc SconfigWebServer, allmi
 		return e
 	}
 	if e := engine.Post(WebPathSconfigSset, 500000000, _Sconfig_Sset_WebHandler(svc.Sset)); e != nil {
+		return e
+	}
+	if e := engine.Post(WebPathSconfigSrollback, 500000000, _Sconfig_Srollback_WebHandler(svc.Srollback)); e != nil {
 		return e
 	}
 	if e := engine.Get(WebPathSconfigSget, 500000000, _Sconfig_Sget_WebHandler(svc.Sget)); e != nil {

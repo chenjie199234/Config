@@ -26,12 +26,15 @@ func Start() *Service {
 
 //one specific app's current info
 func (s *Service) Cinfo(ctx context.Context, in *api.Cinforeq) (*api.Cinforesp, error) {
-	curid, data, allids, e := s.cconfigDao.MongoGetInfo(ctx, in.Groupname, in.Appname)
+	curid, data, allids, opnum, e := s.cconfigDao.MongoGetInfo(ctx, in.Groupname, in.Appname)
 	if e != nil {
 		log.Error("[cconfig.Info] error:", e)
 		return nil, e
 	}
-	return &api.Cinforesp{CurId: curid, CurConfig: data, AllIds: allids}, nil
+	if opnum == in.OpNum && opnum != 0 {
+		return &api.Cinforesp{OpNum: opnum}, nil
+	}
+	return &api.Cinforesp{CurId: curid, CurConfig: data, AllIds: allids, OpNum: opnum}, nil
 }
 
 //set one specific app's config
@@ -42,6 +45,16 @@ func (s *Service) Cset(ctx context.Context, in *api.Csetreq) (*api.Csetresp, err
 		return nil, e
 	}
 	return &api.Csetresp{}, nil
+}
+
+//rollback one specific app's config
+func (s *Service) Crollback(ctx context.Context, in *api.Crollbackreq) (*api.Crollbackresp, error) {
+	e := s.cconfigDao.MongoRollbackConfig(ctx, in.Groupname, in.Appname, in.Id)
+	if e != nil {
+		log.Error("[cconfig.Rollback] error:", e)
+		return nil, e
+	}
+	return &api.Crollbackresp{}, nil
 }
 
 //get one specific app's config
