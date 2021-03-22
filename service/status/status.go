@@ -1,0 +1,41 @@
+package status
+
+import (
+	"context"
+	"time"
+
+	//"config/config"
+	"config/api"
+	//statusdao "config/dao/status"
+	//"github.com/chenjie199234/Corelib/log"
+	//"github.com/chenjie199234/Corelib/rpc"
+	//"github.com/chenjie199234/Corelib/web"
+)
+
+//Service subservice for status business
+type Service struct {
+	//statusDao *statusdao.Dao
+}
+
+//Start -
+func Start() *Service {
+	return &Service{
+		//statusDao: statusdao.NewDao( config.GetMongo("status_mongo")),
+		//statusDao: statusdao.NewDao(nil, nil, nil),
+	}
+}
+
+func (s *Service) Ping(ctx context.Context, in *api.Pingreq) (*api.Pingresp, error) {
+	//if _, ok := ctx.(*rpc.Context); ok {
+	//        log.Info("this is a rpc call")
+	//}
+	//if _, ok := ctx.(*web.Context); ok {
+	//        log.Info("this is a web call")
+	//}
+	return &api.Pingresp{ClientTimestamp: in.Timestamp, ServerTimestamp: time.Now().UnixNano()}, nil
+}
+
+//Stop -
+func (s *Service) Stop() {
+
+}
