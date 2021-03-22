@@ -26,13 +26,10 @@ func Start() *Service {
 
 //one specific app's current info
 func (s *Service) Cinfo(ctx context.Context, in *api.Cinforeq) (*api.Cinforesp, error) {
-	curid, data, allids, opnum, e := s.cconfigDao.MongoGetInfo(ctx, in.Groupname, in.Appname)
+	curid, data, allids, opnum, e := s.cconfigDao.MongoGetInfo(ctx, in.Groupname, in.Appname, in.OpNum)
 	if e != nil {
 		log.Error("[cconfig.Info] error:", e)
 		return nil, e
-	}
-	if opnum == in.OpNum && opnum != 0 {
-		return &api.Cinforesp{OpNum: opnum}, nil
 	}
 	return &api.Cinforesp{CurId: curid, CurConfig: data, AllIds: allids, OpNum: opnum}, nil
 }

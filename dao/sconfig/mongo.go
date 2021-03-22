@@ -9,7 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-func (d *Dao) MongoGetInfo(ctx context.Context, groupname, appname string) (string, string, []string, int64, error) {
+func (d *Dao) MongoGetInfo(ctx context.Context, groupname, appname string, op_num int64) (string, string, []string, int64, error) {
 	var summary struct {
 		CurId  primitive.ObjectID   `bson:"cur_id"`
 		AllIds []primitive.ObjectID `bson:"all_ids"`
@@ -17,6 +17,10 @@ func (d *Dao) MongoGetInfo(ctx context.Context, groupname, appname string) (stri
 	}
 	if e := d.mongo.Database("s_"+groupname).Collection(appname).FindOne(ctx, bson.M{"_id": 0}).Decode(&summary); e != nil {
 		return "", "", nil, 0, e
+	}
+	//version check:didn't change
+	if summary.OpNum == op_num && op_num != 0 {
+		return "", "", nil, op_num, nil
 	}
 	var infotemp struct {
 		Data string `bson:"data"`

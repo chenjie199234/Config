@@ -26,13 +26,10 @@ func Start() *Service {
 
 //one specific app's current info
 func (s *Service) Sinfo(ctx context.Context, in *api.Sinforeq) (*api.Sinforesp, error) {
-	curid, data, allids, opnum, e := s.sconfigDao.MongoGetInfo(ctx, in.Groupname, in.Appname)
+	curid, data, allids, opnum, e := s.sconfigDao.MongoGetInfo(ctx, in.Groupname, in.Appname, in.OpNum)
 	if e != nil {
 		log.Error("[sconfig.Info] error:", e)
 		return nil, e
-	}
-	if opnum == in.OpNum && opnum != 0 {
-		return &api.Sinforesp{OpNum: opnum}, nil
 	}
 	return &api.Sinforesp{CurId: curid, CurConfig: data, AllIds: allids, OpNum: opnum}, nil
 }
