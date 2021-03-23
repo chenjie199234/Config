@@ -37,15 +37,17 @@ message sinforeq {
 }
 message sinforesp {
 	string cur_id=1;
-	string cur_config=2;
-	int64 op_num=3;
+	string cur_app_config=2;
+	string cur_source_config=3;
+	int64 op_num=4;
 	//ids are sortted by create time
-	repeated string all_ids=4;
+	repeated string all_ids=5;
 }
 message ssetreq {
 	string groupname=1;//empty:false
 	string appname=2;//empty:false
-	string config=3;
+	string app_config=3;
+	string source_config=4;
 }
 message ssetresp {
 }
@@ -64,7 +66,8 @@ message sgetreq {
 }
 message sgetresp {
 	string id=1;
-	string config=2;
+	string app_config=2;
+	string source_config=3;
 }
 message sgroupsreq {
 }

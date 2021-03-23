@@ -517,8 +517,14 @@ func _Sconfig_Sset_WebHandler(handler func(context.Context, *Ssetreq) (*Ssetresp
 				buf.Append(",")
 				hasfields = true
 			}
-			if temp := ctx.GetForm("config"); len(temp) != 0 {
-				buf.Append("\"config\":")
+			if temp := ctx.GetForm("app_config"); len(temp) != 0 {
+				buf.Append("\"app_config\":")
+				buf.Append(temp)
+				buf.Append(",")
+				hasfields = true
+			}
+			if temp := ctx.GetForm("source_config"); len(temp) != 0 {
+				buf.Append("\"source_config\":")
 				buf.Append(temp)
 				buf.Append(",")
 				hasfields = true

@@ -4,6 +4,14 @@
 !/api/*
 !/api/**/
 !/api/**/*
+/api/deps/**/status.proto
+/api/deps/**/status.pb.go
+/api/deps/**/status_web.pb.go
+/api/deps/**/status_rpc.pb.go
+/api/deps/status_rpc.pb.go
+/api/deps/status_rpc.pb.go
+/api/deps/status_rpc.pb.go
+/api/deps/status_rpc.pb.go
 !/config/
 !/config/*
 !/config/**/
@@ -24,6 +32,10 @@
 !/service/*
 !/service/**/
 !/service/**/*
+!/sdk/
+!/sdk/*
+!/sdk/**/
+!/sdk/**/*
 !AppConfig.json
 !cmd.sh
 !cmd.bat

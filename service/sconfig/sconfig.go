@@ -26,17 +26,25 @@ func Start() *Service {
 
 //one specific app's current info
 func (s *Service) Sinfo(ctx context.Context, in *api.Sinforeq) (*api.Sinforesp, error) {
-	curid, data, allids, opnum, e := s.sconfigDao.MongoGetInfo(ctx, in.Groupname, in.Appname, in.OpNum)
+	sum, conf, e := s.sconfigDao.MongoGetInfo(ctx, in.Groupname, in.Appname, in.OpNum)
 	if e != nil {
 		log.Error("[sconfig.Info] error:", e)
 		return nil, e
 	}
-	return &api.Sinforesp{CurId: curid, CurConfig: data, AllIds: allids, OpNum: opnum}, nil
+	if sum == nil && conf == nil {
+		//nothing changed
+		return &api.Sinforesp{OpNum: in.OpNum}, nil
+	}
+	temp := make([]string, 0, len(sum.AllIds)+1)
+	for _, v := range sum.AllIds {
+		temp = append(temp, v.Hex())
+	}
+	return &api.Sinforesp{CurId: sum.CurId.Hex(), AllIds: temp, OpNum: sum.OpNum, CurAppConfig: conf.AppConfig, CurSourceConfig: conf.SourceConfig}, nil
 }
 
 //set one specific app's config
 func (s *Service) Sset(ctx context.Context, in *api.Ssetreq) (*api.Ssetresp, error) {
-	e := s.sconfigDao.MongoSetConfig(ctx, in.Groupname, in.Appname, in.Config)
+	e := s.sconfigDao.MongoSetConfig(ctx, in.Groupname, in.Appname, in.AppConfig, in.SourceConfig)
 	if e != nil {
 		log.Error("[sconfig.Set] error:", e)
 		return nil, e
@@ -56,12 +64,12 @@ func (s *Service) Srollback(ctx context.Context, in *api.Srollbackreq) (*api.Sro
 
 //get one specific app's config
 func (s *Service) Sget(ctx context.Context, in *api.Sgetreq) (*api.Sgetresp, error) {
-	data, e := s.sconfigDao.MongoGetConfig(ctx, in.Groupname, in.Appname, in.Id)
+	conf, e := s.sconfigDao.MongoGetConfig(ctx, in.Groupname, in.Appname, in.Id)
 	if e != nil {
 		log.Error("[sconfig.Get] error:", e)
 		return nil, e
 	}
-	return &api.Sgetresp{Config: data}, nil
+	return &api.Sgetresp{AppConfig: conf.AppConfig, SourceConfig: conf.SourceConfig}, nil
 }
 
 //get all groups

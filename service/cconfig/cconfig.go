@@ -26,17 +26,21 @@ func Start() *Service {
 
 //one specific app's current info
 func (s *Service) Cinfo(ctx context.Context, in *api.Cinforeq) (*api.Cinforesp, error) {
-	curid, data, allids, opnum, e := s.cconfigDao.MongoGetInfo(ctx, in.Groupname, in.Appname, in.OpNum)
+	sum, conf, e := s.cconfigDao.MongoGetInfo(ctx, in.Groupname, in.Appname, in.OpNum)
 	if e != nil {
 		log.Error("[cconfig.Info] error:", e)
 		return nil, e
 	}
-	return &api.Cinforesp{CurId: curid, CurConfig: data, AllIds: allids, OpNum: opnum}, nil
+	temp := make([]string, 0, len(sum.AllIds)+1)
+	for _, v := range sum.AllIds {
+		temp = append(temp, v.Hex())
+	}
+	return &api.Cinforesp{CurId: sum.CurId.Hex(), AllIds: temp, OpNum: sum.OpNum, CurAppConfig: conf.AppConfig, CurSourceConfig: conf.SourceConfig}, nil
 }
 
 //set one specific app's config
 func (s *Service) Cset(ctx context.Context, in *api.Csetreq) (*api.Csetresp, error) {
-	e := s.cconfigDao.MongoSetConfig(ctx, in.Groupname, in.Appname, in.Config)
+	e := s.cconfigDao.MongoSetConfig(ctx, in.Groupname, in.Appname, in.AppConfig, in.SourceConfig)
 	if e != nil {
 		log.Error("[cconfig.Set] error:", e)
 		return nil, e
@@ -56,12 +60,12 @@ func (s *Service) Crollback(ctx context.Context, in *api.Crollbackreq) (*api.Cro
 
 //get one specific app's config
 func (s *Service) Cget(ctx context.Context, in *api.Cgetreq) (*api.Cgetresp, error) {
-	data, e := s.cconfigDao.MongoGetConfig(ctx, in.Groupname, in.Appname, in.Id)
+	conf, e := s.cconfigDao.MongoGetConfig(ctx, in.Groupname, in.Appname, in.Id)
 	if e != nil {
 		log.Error("[cconfig.Get] error:", e)
 		return nil, e
 	}
-	return &api.Cgetresp{Config: data}, nil
+	return &api.Cgetresp{AppConfig: conf.AppConfig, SourceConfig: conf.SourceConfig}, nil
 }
 
 //get all groups
