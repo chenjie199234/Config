@@ -40,38 +40,48 @@ type EnvConfig struct {
 	DiscoveryName     *string
 	DiscoveryPort     *int
 	ServerVerifyDatas []string
+	ConfigType        *int
 	RunEnv            *string
 	DeployEnv         *string
 }
 
 //sourceConfig can't hot update
 type sourceConfig struct {
-	Rpc      *RpcConfig                 `json:"rpc"`
-	Web      *WebConfig                 `json:"web"`
-	Mongo    map[string]*MongoConfig    `json:"mongo"`
-	Sql      map[string]*SqlConfig      `json:"sql"`       //key example:xx_sql
-	Redis    map[string]*RedisConfig    `json:"redis"`     //key example:xx_redis
-	KafkaPub map[string]*KafkaPubConfig `json:"kafka_pub"` //key:topic name
-	KafkaSub map[string]*KafkaSubConfig `json:"kafka_sub"` //key:topic name
+	RpcServer *RpcServerConfig           `json:"rpc_server"`
+	RpcClient *RpcClientConfig           `json:"rpc_client"`
+	WebServer *WebServerConfig           `json:"web_server"`
+	WebClient *WebClientConfig           `json:"web_client"`
+	Mongo     map[string]*MongoConfig    `json:"mongo"`     //key example:xxx_mongo
+	Sql       map[string]*SqlConfig      `json:"sql"`       //key example:xx_sql
+	Redis     map[string]*RedisConfig    `json:"redis"`     //key example:xx_redis
+	KafkaPub  map[string]*KafkaPubConfig `json:"kafka_pub"` //key:topic name
+	KafkaSub  map[string]*KafkaSubConfig `json:"kafka_sub"` //key:topic name
 }
 
-//RpcConfig -
-type RpcConfig struct {
-	RpcTimeout      ctime.Duration `json:"rpc_timeout"`       //default 500ms
-	RpcConnTimeout  ctime.Duration `json:"rpc_conn_timeout"`  //default 1s
-	RpcHeartTimeout ctime.Duration `json:"rpc_heart_timeout"` //default 5s
-	RpcHeartProbe   ctime.Duration `json:"rpc_heart_probe"`   //default 1.5s
+//RpcServerConfig -
+type RpcServerConfig struct {
+	GlobalTimeout ctime.Duration `json:"global_timeout"` //default 500ms
+	HeartTimeout  ctime.Duration `json:"heart_timeout"`  //default 5s
+	HeartProbe    ctime.Duration `json:"heart_probe"`    //default 1.5s
 }
 
-//WebConfig -
-type WebConfig struct {
-	//server
-	WebTimeout    ctime.Duration `json:"web_timeout"` //default 500ms
-	WebStaticFile string         `json:"web_staticfile"`
-	WebCertFile   string         `json:"web_certfile"`
-	WebKeyFile    string         `json:"web_keyfile"`
+//RpcClientConfig -
+type RpcClientConfig struct {
+	ConnTimeout   ctime.Duration `json:"conn_timeout"`   //default 500ms
+	GlobalTimeout ctime.Duration `json:"global_timeout"` //default 500ms
+	HeartTimeout  ctime.Duration `json:"heart_timeout"`  //default 5s
+	HeartProbe    ctime.Duration `json:"heart_probe"`    //default 1.5s
+}
+
+//WebServerConfig -
+type WebServerConfig struct {
+	GlobalTimeout ctime.Duration    `json:"global_timeout"` //default 500ms
+	IdleTimeout   ctime.Duration    `json:"idle_timeout"`   //default 5s
+	HeartProbe    ctime.Duration    `json:"heart_probe"`    //default 1.5s
+	StaticFile    string            `json:"static_file"`
+	CertKey       map[string]string `json:"cert_key"`
 	//cors
-	WebCors *WebCorsConfig `json:"web_cors"`
+	Cors *WebCorsConfig `json:"cors"`
 }
 
 //WebCorsConfig -
@@ -79,6 +89,15 @@ type WebCorsConfig struct {
 	CorsOrigin []string `json:"cors_origin"`
 	CorsHeader []string `json:"cors_header"`
 	CorsExpose []string `json:"cors_expose"`
+}
+
+//WebClientConfig -
+type WebClientConfig struct {
+	GlobalTimeout ctime.Duration `json:"global_timeout"` //default 500ms
+	IdleTimeout   ctime.Duration `json:"idle_timeout"`   //default 5s
+	HeartProbe    ctime.Duration `json:"heart_probe"`    //default 1.5s
+	SkipVerifyTls bool           `json:"skip_verify_tls"`
+	Cas           []string       `json:"cas"`
 }
 
 //RedisConfig -
@@ -140,7 +159,11 @@ type KafkaSubConfig struct {
 }
 
 //AC -
-var AC *AppConfig
+var ac *AppConfig
+
+func GetAppConfig() *AppConfig {
+	return (*AppConfig)(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&ac))))
+}
 
 var watcher *fsnotify.Watcher
 var closech chan struct{}
@@ -164,8 +187,14 @@ var kafkaPubers map[string]*kafka.Writer
 func init() {
 	initenv()
 	initdiscovery()
-	initsource()
-	initapp()
+	var path string
+	if EC.ConfigType == nil || *EC.ConfigType == 0 {
+		path = "./"
+	} else if *EC.ConfigType == 1 {
+		path = "./k8sconfig/"
+	}
+	initsource(path)
+	initapp(path)
 }
 
 func initenv() {
@@ -203,7 +232,7 @@ func initenv() {
 	}
 	if str, ok := os.LookupEnv("DISCOVERY_SERVER_PORT"); ok && str != "<DISCOVERY_SERVER_PORT>" && str != "" {
 		port, e := strconv.Atoi(str)
-		if e != nil {
+		if e != nil || port < 1 || port > 65535 {
 			log.Error("[config.initenv] DISCOVERY_SERVER_PORT must be number in [1-65535]")
 			Close()
 			os.Exit(1)
@@ -215,6 +244,17 @@ func initenv() {
 		os.Exit(1)
 	} else {
 		log.Warning("[config.initenv] missing DISCOVERY_SERVER_PORT")
+	}
+	if str, ok := os.LookupEnv("CONFIG_TYPE"); ok && str != "<CONFIG_TYPE>" && str != "" {
+		configtype, e := strconv.Atoi(str)
+		if e != nil || (configtype != 0 && configtype != 1) {
+			log.Error("[config.initenv] CONFIG_TYPE must be number in [0,1]")
+			Close()
+			os.Exit(1)
+		}
+		EC.ConfigType = &configtype
+	} else {
+		log.Warning("[config.initenv] missing CONFIG_TYPE")
 	}
 	if str, ok := os.LookupEnv("RUN_ENV"); ok && str != "<RUN_ENV>" && str != "" {
 		EC.RunEnv = &str
@@ -240,8 +280,8 @@ func initdiscovery() {
 		}
 	}
 }
-func initsource() {
-	data, e := os.ReadFile("SourceConfig.json")
+func initsource(path string) {
+	data, e := os.ReadFile(path + "SourceConfig.json")
 	if e != nil {
 		log.Error("[config.initsource] read config file error:", e)
 		Close()
@@ -253,34 +293,109 @@ func initsource() {
 		Close()
 		os.Exit(1)
 	}
-	if sc.Rpc == nil {
-		sc.Rpc = &RpcConfig{
-			RpcTimeout:      ctime.Duration(time.Millisecond * 500),
-			RpcConnTimeout:  ctime.Duration(time.Second),
-			RpcHeartTimeout: ctime.Duration(5 * time.Second),
-			RpcHeartProbe:   ctime.Duration(1500 * time.Millisecond),
+	if sc.RpcServer == nil {
+		sc.RpcServer = &RpcServerConfig{
+			GlobalTimeout: ctime.Duration(time.Millisecond * 500),
+			HeartTimeout:  ctime.Duration(5 * time.Second),
+			HeartProbe:    ctime.Duration(1500 * time.Millisecond),
 		}
 	} else {
-		if sc.Rpc.RpcTimeout == 0 {
-			sc.Rpc.RpcTimeout = ctime.Duration(time.Millisecond * 500)
+		if sc.RpcServer.GlobalTimeout <= 0 {
+			sc.RpcServer.GlobalTimeout = ctime.Duration(time.Millisecond * 500)
 		}
-		if sc.Rpc.RpcConnTimeout == 0 {
-			sc.Rpc.RpcConnTimeout = ctime.Duration(time.Second)
+		if sc.RpcServer.HeartTimeout <= 0 {
+			sc.RpcServer.HeartTimeout = ctime.Duration(5 * time.Second)
 		}
-		if sc.Rpc.RpcHeartTimeout == 0 {
-			sc.Rpc.RpcHeartTimeout = ctime.Duration(5 * time.Second)
-		}
-		if sc.Rpc.RpcHeartProbe == 0 {
-			sc.Rpc.RpcHeartProbe = ctime.Duration(1500 * time.Millisecond)
+		if sc.RpcServer.HeartProbe <= 0 {
+			sc.RpcServer.HeartProbe = ctime.Duration(1500 * time.Millisecond)
 		}
 	}
-	if sc.Web == nil {
-		sc.Web = &WebConfig{
-			WebTimeout: ctime.Duration(time.Millisecond * 500),
+	if sc.RpcClient == nil {
+		sc.RpcClient = &RpcClientConfig{
+			ConnTimeout:   ctime.Duration(time.Millisecond * 500),
+			GlobalTimeout: ctime.Duration(time.Millisecond * 500),
+			HeartTimeout:  ctime.Duration(time.Second * 5),
+			HeartProbe:    ctime.Duration(time.Millisecond * 1500),
 		}
 	} else {
-		if sc.Web.WebTimeout == 0 {
-			sc.Web.WebTimeout = ctime.Duration(time.Millisecond * 500)
+		if sc.RpcClient.ConnTimeout <= 0 {
+			sc.RpcClient.ConnTimeout = ctime.Duration(time.Millisecond * 500)
+		}
+		if sc.RpcClient.GlobalTimeout <= 0 {
+			sc.RpcClient.GlobalTimeout = ctime.Duration(time.Millisecond * 500)
+		}
+		if sc.RpcClient.HeartTimeout <= 0 {
+			sc.RpcClient.HeartTimeout = ctime.Duration(time.Second * 5)
+		}
+		if sc.RpcClient.HeartProbe <= 0 {
+			sc.RpcClient.HeartProbe = ctime.Duration(time.Millisecond * 1500)
+		}
+	}
+	if sc.WebServer == nil {
+		sc.WebServer = &WebServerConfig{
+			GlobalTimeout: ctime.Duration(time.Millisecond * 500),
+			IdleTimeout:   ctime.Duration(time.Second * 5),
+			HeartProbe:    ctime.Duration(time.Millisecond * 1500),
+			StaticFile:    "./src",
+			Cors: &WebCorsConfig{
+				CorsOrigin: []string{"*"},
+				CorsHeader: []string{"*"},
+				CorsExpose: nil,
+			},
+		}
+	} else {
+		if sc.WebServer.GlobalTimeout <= 0 {
+			sc.WebServer.GlobalTimeout = ctime.Duration(time.Millisecond * 500)
+		}
+		if sc.WebServer.IdleTimeout <= 0 {
+			sc.WebServer.IdleTimeout = ctime.Duration(time.Second * 5)
+		}
+		if sc.WebServer.HeartProbe <= 0 {
+			sc.WebServer.HeartProbe = ctime.Duration(time.Millisecond * 1500)
+		}
+		if len(sc.WebServer.CertKey) != 0 {
+			delete(sc.WebServer.CertKey, "path_to_example_cert")
+		}
+		if sc.WebServer.Cors == nil {
+			sc.WebServer.Cors = &WebCorsConfig{
+				CorsOrigin: []string{"*"},
+				CorsHeader: []string{"*"},
+				CorsExpose: nil,
+			}
+		}
+	}
+	if sc.WebClient == nil {
+		sc.WebClient = &WebClientConfig{
+			GlobalTimeout: ctime.Duration(time.Millisecond * 500),
+			IdleTimeout:   ctime.Duration(time.Second * 5),
+			HeartProbe:    ctime.Duration(time.Millisecond * 1500),
+			SkipVerifyTls: true,
+			Cas:           nil,
+		}
+	} else {
+		if sc.WebClient.GlobalTimeout <= 0 {
+			sc.WebClient.GlobalTimeout = ctime.Duration(time.Millisecond * 500)
+		}
+		if sc.WebClient.IdleTimeout <= 0 {
+			sc.WebClient.IdleTimeout = ctime.Duration(time.Second * 5)
+		}
+		if sc.WebServer.HeartProbe <= 0 {
+			sc.WebClient.HeartProbe = ctime.Duration(time.Millisecond * 1500)
+		}
+		head := 0
+		tail := len(sc.WebClient.Cas) - 1
+		for head <= tail {
+			if sc.WebClient.Cas[head] == "path_to_example_ca" {
+				if head != tail {
+					sc.WebClient.Cas[head], sc.WebClient.Cas[tail] = sc.WebClient.Cas[tail], sc.WebClient.Cas[head]
+				}
+				tail--
+			} else {
+				head++
+			}
+		}
+		if sc.WebClient.Cas != nil && head != len(sc.WebClient.Cas) {
+			sc.WebClient.Cas = sc.WebClient.Cas[:head]
 		}
 	}
 	for _, mongoc := range sc.Mongo {
@@ -506,15 +621,15 @@ func initsource() {
 		kafkaPubers[topic] = writer
 	}
 }
-func initapp() {
-	data, e := os.ReadFile("AppConfig.json")
+func initapp(path string) {
+	data, e := os.ReadFile(path + "AppConfig.json")
 	if e != nil {
 		log.Error("[config.initapp] read config file error:", e)
 		Close()
 		os.Exit(1)
 	}
-	AC = &AppConfig{}
-	if e = json.Unmarshal(data, AC); e != nil {
+	ac = &AppConfig{}
+	if e = json.Unmarshal(data, ac); e != nil {
 		log.Error("[config.initapp] config file format error:", e)
 		Close()
 		os.Exit(1)
@@ -525,7 +640,7 @@ func initapp() {
 		Close()
 		os.Exit(1)
 	}
-	if e = watcher.Add("./"); e != nil {
+	if e = watcher.Add(path); e != nil {
 		log.Error("[config.initapp] create watcher for hot update error:", e)
 		Close()
 		os.Exit(1)
@@ -539,10 +654,17 @@ func initapp() {
 				if !ok {
 					return
 				}
-				if filepath.Base(event.Name) != "AppConfig.json" || (event.Op&fsnotify.Create == 0 && event.Op&fsnotify.Write == 0) {
-					continue
+				if EC.ConfigType == nil || *EC.ConfigType == 0 {
+					if filepath.Base(event.Name) != "AppConfig.json" || (event.Op&fsnotify.Create == 0 && event.Op&fsnotify.Write == 0) {
+						continue
+					}
+				} else {
+					//k8s mount volume is different
+					if filepath.Base(event.Name) != "..data" || event.Op&fsnotify.Create == 0 {
+						continue
+					}
 				}
-				data, e := os.ReadFile("AppConfig.json")
+				data, e := os.ReadFile(path + "AppConfig.json")
 				if e != nil {
 					log.Error("[config.initapp] hot update read config file error:", e)
 					continue
@@ -552,7 +674,7 @@ func initapp() {
 					log.Error("[config.initapp] hot update config file format error:", e)
 					continue
 				}
-				atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&AC)), unsafe.Pointer(c))
+				atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&ac)), unsafe.Pointer(c))
 			case err, ok := <-watcher.Errors:
 				if !ok {
 					return
@@ -572,14 +694,24 @@ func Close() {
 	log.Close()
 }
 
-//GetRpcConfig get the rpc net config
-func GetRpcConfig() *RpcConfig {
-	return sc.Rpc
+//GetRpcServerConfig get the rpc net config
+func GetRpcServerConfig() *RpcServerConfig {
+	return sc.RpcServer
 }
 
-//GetWebConfig get the web net config
-func GetWebConfig() *WebConfig {
-	return sc.Web
+//GetRpcClientConfig get the rpc net config
+func GetRpcClientConfig() *RpcClientConfig {
+	return sc.RpcClient
+}
+
+//GetWebServerConfig get the web net config
+func GetWebServerConfig() *WebServerConfig {
+	return sc.WebServer
+}
+
+//GetWebClientConfig get the web net config
+func GetWebClientConfig() *WebClientConfig {
+	return sc.WebClient
 }
 
 //GetMongo get a mongodb client by db's instance name

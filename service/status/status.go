@@ -6,7 +6,8 @@ import (
 
 	//"config/config"
 	"config/api"
-	//statusdao "config/dao/status"
+	statusdao "config/dao/status"
+
 	//"github.com/chenjie199234/Corelib/log"
 	//"github.com/chenjie199234/Corelib/rpc"
 	//"github.com/chenjie199234/Corelib/web"
@@ -14,18 +15,18 @@ import (
 
 //Service subservice for status business
 type Service struct {
-	//statusDao *statusdao.Dao
+	statusDao *statusdao.Dao
 }
 
 //Start -
 func Start() *Service {
 	return &Service{
-		//statusDao: statusdao.NewDao( config.GetMongo("status_mongo")),
-		//statusDao: statusdao.NewDao(nil, nil, nil),
+		//statusDao: statusdao.NewDao(config.GetSql("status_sql"), config.GetRedis("status_redis"), config.GetMongo("status_mongo")),
+		statusDao: statusdao.NewDao(nil, nil, nil),
 	}
 }
 
-func (s *Service) Ping(ctx context.Context, in *api.Pingreq) (*api.Pingresp, error) {
+func (s *Service) Ping(ctx context.Context,in *api.Pingreq) (*api.Pingresp, error) {
 	//if _, ok := ctx.(*rpc.Context); ok {
 	//        log.Info("this is a rpc call")
 	//}

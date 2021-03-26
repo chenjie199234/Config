@@ -8,7 +8,6 @@ import (
 	error1 "github.com/chenjie199234/Corelib/util/error"
 	metadata "github.com/chenjie199234/Corelib/util/metadata"
 	proto "github.com/golang/protobuf/proto"
-	time "time"
 )
 
 var RpcPathCconfigCinfo = "/config.Cconfig/Cinfo"
@@ -38,20 +37,9 @@ type cconfigRpcClient struct {
 	cc *rpc.RpcClient
 }
 
-//has race,will only return the first's call's client,the config will use the first call's config
-func NewCconfigRpcClient(timeout, conntimeout, hearttimeout, heartprobe time.Duration, selfgroup, selfname string, verifydata string, picker rpc.PickHandler, discover rpc.DiscoveryHandler) (CconfigRpcClient, error) {
-	c := &rpc.Config{
-		Timeout:                time.Duration(timeout),
-		ConnTimeout:            time.Duration(conntimeout),
-		HeartTimeout:           time.Duration(hearttimeout),
-		HeartPorbe:             time.Duration(heartprobe),
-		GroupNum:               1,
-		SocketRBuf:             1024,
-		SocketWBuf:             1024,
-		MaxMsgLen:              65535,
-		MaxBufferedWriteMsgNum: 1024,
-	}
-	cc, e := rpc.NewRpcClient(c, selfgroup, selfname, verifydata, Group, Name, picker, discover)
+//has race,will only return the first call's client,the config will use the first call's config
+func NewCconfigRpcClient(c *rpc.ClientConfig, selfgroup, selfname string) (CconfigRpcClient, error) {
+	cc, e := rpc.NewRpcClient(c, selfgroup, selfname, Group, Name)
 	if e != nil {
 		return nil, e
 	}

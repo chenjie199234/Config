@@ -12,7 +12,6 @@ import (
 	web "github.com/chenjie199234/Corelib/web"
 	io "io"
 	http "net/http"
-	time "time"
 )
 
 var WebPathCconfigCinfo = "/config.Cconfig/Cinfo"
@@ -42,9 +41,9 @@ type cconfigWebClient struct {
 	cc *web.WebClient
 }
 
-//has race,will only return the first's call's client,the config will use the first call's config
-func NewCconfigWebClient(globaltimeout time.Duration, selfgroup, selfname string, picker web.PickHandler, discover web.DiscoveryHandler) (CconfigWebClient, error) {
-	cc, e := web.NewWebClient(globaltimeout, selfgroup, selfname, Group, Name, picker, discover)
+//has race,will only return the first call's client,the config will use the first call's config
+func NewCconfigWebClient(c *web.ClientConfig, selfgroup, selfname string) (CconfigWebClient, error) {
+	cc, e := web.NewWebClient(c, selfgroup, selfname, Group, Name)
 	if e != nil {
 		return nil, e
 	}

@@ -61,6 +61,18 @@ spec:
             - name: rpc
               containerPort: 9000
               protocol: TCP
+          volumeMounts:
+            - name: config-config-volume
+              mountPath: /root/app/k8sconfig
+      volumes:
+        - name: config-config-volume
+          configMap:
+            name: config-config
+            items:
+              - key: app-config
+                path: AppConfig.json
+              - key: source-config
+                path: SourceConfig.json
       imagePullSecrets:
         - name: default-secret
 ---
