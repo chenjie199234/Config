@@ -46,10 +46,6 @@ func StartRpcServer() {
 		log.Error("[xrpc] register handlers error:", e)
 		return
 	}
-	if e = api.RegisterCconfigRpcServer(s, service.SvcCconfig, mids.AllMids()); e != nil {
-		log.Error("[xrpc] register handlers error:", e)
-		return
-	}
 	//example
 	//if e = api.RegisterExampleRpcServer(s, service.SvcExample,mids.AllMids()); e != nil {
 	//log.Error("[xrpc] register handlers error:", e)
@@ -68,4 +64,3 @@ func StopRpcServer() {
 		s.StopRpcServer()
 	}
 }
-

@@ -53,10 +53,6 @@ func StartWebServer() {
 		log.Error("[xweb] register handlers error:", e)
 		return
 	}
-	if e = api.RegisterCconfigWebServer(s, service.SvcCconfig, mids.AllMids()); e != nil {
-		log.Error("[xweb] register handlers error:", e)
-		return
-	}
 	//example
 	//if e = api.RegisterExampleWebServer(s, service.SvcExample, mids.AllMids()); e != nil {
 	//log.Error("[xweb] register handlers error:", e)
@@ -75,4 +71,3 @@ func StopWebServer() {
 		s.StopWebServer()
 	}
 }
-
