@@ -24,7 +24,7 @@ var instance *sdk
 
 //this will create 2 file AppConfig.json and SourceConfig.json in the path and hot update it
 //timeout : each call's timeout
-//interval: frequence to call the config server,this is only useful when watch is disable
+//interval: frequence to check update from the config server,this is only useful when watch is disable
 func NewRpcSdk(timeout, interval time.Duration, path string, selfgroup, selfname string) error {
 	if !atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&instance)), nil, unsafe.Pointer(&sdk{
 		path:  path,
@@ -86,7 +86,7 @@ func NewRpcSdk(timeout, interval time.Duration, path string, selfgroup, selfname
 
 //this will create 2 file AppConfig.json and SourceConfig.json in the path and hot update it
 //timeout : each call's timeout
-//interval: frequence to call the config server,this is only useful when watch is disable
+//interval: frequence to check update from the config server,this is only useful when watch is disable
 func NewWebSdk(timeout, interval time.Duration, path string, selfgroup, selfname string) error {
 	if !atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&instance)), nil, unsafe.Pointer(&sdk{
 		path:  path,
