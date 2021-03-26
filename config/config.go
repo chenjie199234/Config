@@ -10,12 +10,11 @@ import (
 	"time"
 	"unsafe"
 
-	"config/api"
-
-	"github.com/chenjie199234/Corelib/discovery"
+	"github.com/chenjie199234/Config/api"
 	"github.com/chenjie199234/Corelib/log"
 	"github.com/chenjie199234/Corelib/redis"
 	ctime "github.com/chenjie199234/Corelib/util/time"
+	discoverysdk "github.com/chenjie199234/Discovery/sdk"
 	"github.com/fsnotify/fsnotify"
 	"github.com/go-sql-driver/mysql"
 	"github.com/segmentio/kafka-go"
@@ -269,12 +268,12 @@ func initenv() {
 }
 func initdiscovery() {
 	if EC.ServerVerifyDatas != nil {
-		vd := ""
+		verifydata := ""
 		if len(EC.ServerVerifyDatas) > 0 {
-			vd = EC.ServerVerifyDatas[0]
+			verifydata = EC.ServerVerifyDatas[0]
 		}
-		if e := discovery.NewDiscoveryClient(nil, api.Group, api.Name, vd, discovery.MakeDefaultFinder(*EC.DiscoveryGroup, *EC.DiscoveryName, *EC.DiscoveryPort)); e != nil {
-			log.Error("[config.initdiscovery] error:", e)
+		if e := discoverysdk.NewSdk(api.Group, api.Name, verifydata); e != nil {
+			log.Error("[config.initdiscovery] new sdk error:", e)
 			Close()
 			os.Exit(1)
 		}

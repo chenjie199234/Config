@@ -3,10 +3,9 @@ package sconfig
 import (
 	"context"
 
-	"config/api"
-	"config/config"
-	sconfigdao "config/dao/sconfig"
-
+	"github.com/chenjie199234/Config/api"
+	"github.com/chenjie199234/Config/config"
+	sconfigdao "github.com/chenjie199234/Config/dao/sconfig"
 	"github.com/chenjie199234/Corelib/log"
 	//"github.com/chenjie199234/Corelib/rpc"
 	//"github.com/chenjie199234/Corelib/web"

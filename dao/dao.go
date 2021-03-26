@@ -3,10 +3,9 @@ package dao
 import (
 	"time"
 
-	//"config/api"
-	//example "config/api/deps/example"
-	"config/config"
-
+	//"github.com/chenjie199234/Config/api"
+	//example "github.chenjie199234/Config/api/deps/example"
+	"github.com/chenjie199234/Config/config"
 	"github.com/chenjie199234/Corelib/rpc"
 	"github.com/chenjie199234/Corelib/web"
 )

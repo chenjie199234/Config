@@ -3,10 +3,9 @@ package xrpc
 import (
 	"time"
 
-	"config/api"
-	"config/config"
-	"config/service"
-
+	"github.com/chenjie199234/Config/api"
+	"github.com/chenjie199234/Config/config"
+	"github.com/chenjie199234/Config/service"
 	"github.com/chenjie199234/Corelib/log"
 	"github.com/chenjie199234/Corelib/rpc"
 	"github.com/chenjie199234/Corelib/rpc/mids"

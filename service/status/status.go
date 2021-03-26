@@ -4,10 +4,8 @@ import (
 	"context"
 	"time"
 
-	//"config/config"
-	"config/api"
-	statusdao "config/dao/status"
-
+	"github.com/chenjie199234/Config/api"
+	statusdao "github.com/chenjie199234/Config/dao/status"
 	//"github.com/chenjie199234/Corelib/log"
 	//"github.com/chenjie199234/Corelib/rpc"
 	//"github.com/chenjie199234/Corelib/web"
@@ -26,7 +24,7 @@ func Start() *Service {
 	}
 }
 
-func (s *Service) Ping(ctx context.Context,in *api.Pingreq) (*api.Pingresp, error) {
+func (s *Service) Ping(ctx context.Context, in *api.Pingreq) (*api.Pingresp, error) {
 	//if _, ok := ctx.(*rpc.Context); ok {
 	//        log.Info("this is a rpc call")
 	//}
@@ -40,3 +38,4 @@ func (s *Service) Ping(ctx context.Context,in *api.Pingreq) (*api.Pingresp, erro
 func (s *Service) Stop() {
 
 }
+

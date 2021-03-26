@@ -8,8 +8,7 @@ import (
 	"time"
 	"unsafe"
 
-	"config/api"
-
+	"github.com/chenjie199234/Config/api"
 	"github.com/chenjie199234/Corelib/log"
 	"github.com/chenjie199234/Corelib/rpc"
 	"github.com/chenjie199234/Corelib/web"

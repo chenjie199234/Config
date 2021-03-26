@@ -1,9 +1,9 @@
 package service
 
 import (
-	"config/dao"
-	"config/service/sconfig"
-	"config/service/status"
+	"github.com/chenjie199234/Config/dao"
+	"github.com/chenjie199234/Config/service/sconfig"
+	"github.com/chenjie199234/Config/service/status"
 )
 
 //SvcStatus one specify sub service
