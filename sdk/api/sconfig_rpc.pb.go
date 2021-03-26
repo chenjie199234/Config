@@ -1,0 +1,1 @@
+../../api/sconfig_rpc.pb.go
