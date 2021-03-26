@@ -1,4 +1,4 @@
-module config
+module github.com/chenjie199234/Config
 
 go 1.16
 
