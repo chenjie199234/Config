@@ -8,17 +8,21 @@ option go_package="config/api;api";
 //this is the proto file for sconfig service
 service sconfig{
 	//one specific app's current info
-	rpc sinfo(sinforeq)returns(sinforesp);//method:get|timeout:500ms
+	rpc sinfo(sinforeq)returns(sinforesp);//method:get
 	//set one specific app's config
-	rpc sset(ssetreq)returns(ssetresp);//method:post|timeout:500ms
+	rpc sset(ssetreq)returns(ssetresp);//method:post
 	//rollback one specific app's config
-	rpc srollback(srollbackreq)returns(srollbackresp);//method:post|timeout:500ms
+	rpc srollback(srollbackreq)returns(srollbackresp);//method:post
 	//get one specific app's config
-	rpc sget(sgetreq)returns(sgetresp);//method:get|timeout:500ms
+	rpc sget(sgetreq)returns(sgetresp);//method:get
 	//get all groups
-	rpc sgroups(sgroupsreq)returns(sgroupsresp);//method:get|timeout:500ms
+	rpc sgroups(sgroupsreq)returns(sgroupsresp);//method:get
 	//get all apps
-	rpc sapps(sappsreq)returns(sappsresp);//method:get|timeout:500ms
+	rpc sapps(sappsreq)returns(sappsresp);//method:get
+	//set watch addr
+	rpc ssetwatchaddr(ssetwatchaddrreq)returns(ssetwatchaddrresp);//method:post
+	//get watch addr
+	rpc sgetwatchaddr(sgetwatchaddrreq)returns(sgetwatchaddrresp);//method:get
 
 	//comment option separate by '|'
 	//method:     http method(only for http,rpc will ignore this),only support:get,post
@@ -79,6 +83,22 @@ message sappsreq {
 }
 message sappsresp {
 	repeated string apps=1;
+}
+message ssetwatchaddrreq{
+	string username=1;
+	string passwd=2;
+	repeated string addrs=3;
+	string replica_set_name=4;
+}
+message ssetwatchaddrresp{
+}
+message sgetwatchaddrreq{
+}
+message sgetwatchaddrresp{
+	string username=1;
+	string passwd=2;
+	repeated string addrs=3;
+	string replica_set_name=4;
 }
 //message examplereq{
 	//comment option separate by '|',only request message support

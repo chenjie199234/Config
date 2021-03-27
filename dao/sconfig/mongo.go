@@ -7,6 +7,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/mongo/readconcern"
 )
 
 type Summary struct {
@@ -114,4 +115,71 @@ func (d *Dao) MongoGetGroups(ctx context.Context) ([]string, error) {
 
 func (d *Dao) MongoGetApps(ctx context.Context, groupname string) ([]string, error) {
 	return d.mongo.Database("s_"+groupname).ListCollectionNames(ctx, bson.M{})
+}
+
+type WatchAddr struct {
+	Username       string   `bson:"username"`
+	Passwd         string   `bson:"passwd"`
+	Addrs          []string `bson:"addrs"`
+	ReplicaSetName string   `bson:"replica_set_name"`
+}
+
+func (d *Dao) MongoDelWatchAddr(ctx context.Context) error {
+	_, e := d.mongo.Database("s_default").Collection("config").DeleteOne(ctx, bson.M{"_id": "watchaddr"})
+	return e
+}
+func (d *Dao) MongoSetWatchAddr(ctx context.Context, wa *WatchAddr) error {
+	filter := bson.M{"_id": "watchaddr"}
+	update := bson.M{
+		"$set": bson.M{"username": wa.Username, "passwd": wa.Passwd, "addrs": wa.Addrs, "replica_set_name": wa.ReplicaSetName},
+	}
+	_, e := d.mongo.Database("s_default").Collection("config").UpdateOne(ctx, filter, update, options.Update().SetUpsert(true))
+	return e
+}
+func (d *Dao) MongoGetWatchAddr(ctx context.Context) (*WatchAddr, error) {
+	wa := &WatchAddr{}
+	if e := d.mongo.Database("s_default").Collection("config").FindOne(ctx, bson.M{"_id": "watchaddr"}).Decode(wa); e != nil {
+		return nil, e
+	}
+	return wa, nil
+}
+func (d *Dao) MongoWatch(groupname, appname string, update func(int64, *Config)) error {
+	pipeline := mongo.Pipeline{bson.D{bson.E{Key: "$match", Value: bson.M{"documentKey._id": 0}}}}
+	c, e := d.mongo.Database("s_"+groupname, options.Database().SetReadConcern(readconcern.Majority())).Collection(appname).Watch(context.Background(), pipeline)
+	if e != nil {
+		return e
+	}
+	defer c.Close(context.Background())
+	summary, config, e := d.MongoGetInfo(context.Background(), groupname, appname, 0)
+	if e == nil {
+		update(summary.OpNum, config)
+	} else if e == mongo.ErrNoDocuments {
+		update(0, nil)
+	} else {
+		return e
+	}
+	for c.Next(context.Background()) {
+		var curid primitive.ObjectID
+		var opnum int64
+		switch c.Current.Lookup("operationType").StringValue() {
+		case "insert":
+			curid = c.Current.Lookup("fullDocument").Document().Lookup("cur_id").ObjectID()
+			opnum = c.Current.Lookup("fullDocument").Document().Lookup("op_num").AsInt64()
+		case "update":
+			curid = c.Current.Lookup("updateDescription").Document().Lookup("updatedFields").Document().Lookup("cur_id").ObjectID()
+			opnum = c.Current.Lookup("updateDescription").Document().Lookup("updatedFields").Document().Lookup("op_num").AsInt64()
+		case "delete":
+			update(0, nil)
+			return nil
+		}
+		config := &Config{}
+		if e := d.mongo.Database("s_"+groupname).Collection(appname).FindOne(context.Background(), bson.M{"_id": curid}).Decode(config); e != nil {
+			return e
+		}
+		update(opnum, config)
+	}
+	if c.Err() != nil {
+		return c.Err()
+	}
+	return nil
 }

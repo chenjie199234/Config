@@ -16,6 +16,8 @@ var RpcPathSconfigSrollback = "/config.Sconfig/Srollback"
 var RpcPathSconfigSget = "/config.Sconfig/Sget"
 var RpcPathSconfigSgroups = "/config.Sconfig/Sgroups"
 var RpcPathSconfigSapps = "/config.Sconfig/Sapps"
+var RpcPathSconfigSsetwatchaddr = "/config.Sconfig/Ssetwatchaddr"
+var RpcPathSconfigSgetwatchaddr = "/config.Sconfig/Sgetwatchaddr"
 
 // SconfigRpcClient is the client API for Sconfig service.
 type SconfigRpcClient interface {
@@ -31,13 +33,16 @@ type SconfigRpcClient interface {
 	Sgroups(context.Context, *Sgroupsreq) (*Sgroupsresp, error)
 	//get all apps
 	Sapps(context.Context, *Sappsreq) (*Sappsresp, error)
+	//set watch addr
+	Ssetwatchaddr(context.Context, *Ssetwatchaddrreq) (*Ssetwatchaddrresp, error)
+	//get watch addr
+	Sgetwatchaddr(context.Context, *Sgetwatchaddrreq) (*Sgetwatchaddrresp, error)
 }
 
 type sconfigRpcClient struct {
 	cc *rpc.RpcClient
 }
 
-//has race,will only return the first call's client,the config will use the first call's config
 func NewSconfigRpcClient(c *rpc.ClientConfig, selfgroup, selfname string) (SconfigRpcClient, error) {
 	cc, e := rpc.NewRpcClient(c, selfgroup, selfname, Group, Name)
 	if e != nil {
@@ -63,7 +68,7 @@ func (c *sconfigRpcClient) Sinfo(ctx context.Context, req *Sinforeq) (*Sinforesp
 		return nil, rpc.ERRREQUEST
 	}
 	reqd, _ := proto.Marshal(req)
-	callback, e := c.cc.Call(ctx, 500000000, RpcPathSconfigSinfo, reqd, metadata.GetAllMetadata(ctx))
+	callback, e := c.cc.Call(ctx, 0, RpcPathSconfigSinfo, reqd, metadata.GetAllMetadata(ctx))
 	if e.(*error1.Error) != nil {
 		return nil, e
 	}
@@ -86,7 +91,7 @@ func (c *sconfigRpcClient) Sset(ctx context.Context, req *Ssetreq) (*Ssetresp, e
 		return nil, rpc.ERRREQUEST
 	}
 	reqd, _ := proto.Marshal(req)
-	callback, e := c.cc.Call(ctx, 500000000, RpcPathSconfigSset, reqd, metadata.GetAllMetadata(ctx))
+	callback, e := c.cc.Call(ctx, 0, RpcPathSconfigSset, reqd, metadata.GetAllMetadata(ctx))
 	if e.(*error1.Error) != nil {
 		return nil, e
 	}
@@ -113,7 +118,7 @@ func (c *sconfigRpcClient) Srollback(ctx context.Context, req *Srollbackreq) (*S
 		return nil, rpc.ERRREQUEST
 	}
 	reqd, _ := proto.Marshal(req)
-	callback, e := c.cc.Call(ctx, 500000000, RpcPathSconfigSrollback, reqd, metadata.GetAllMetadata(ctx))
+	callback, e := c.cc.Call(ctx, 0, RpcPathSconfigSrollback, reqd, metadata.GetAllMetadata(ctx))
 	if e.(*error1.Error) != nil {
 		return nil, e
 	}
@@ -140,7 +145,7 @@ func (c *sconfigRpcClient) Sget(ctx context.Context, req *Sgetreq) (*Sgetresp, e
 		return nil, rpc.ERRREQUEST
 	}
 	reqd, _ := proto.Marshal(req)
-	callback, e := c.cc.Call(ctx, 500000000, RpcPathSconfigSget, reqd, metadata.GetAllMetadata(ctx))
+	callback, e := c.cc.Call(ctx, 0, RpcPathSconfigSget, reqd, metadata.GetAllMetadata(ctx))
 	if e.(*error1.Error) != nil {
 		return nil, e
 	}
@@ -155,7 +160,7 @@ func (c *sconfigRpcClient) Sgroups(ctx context.Context, req *Sgroupsreq) (*Sgrou
 		return nil, rpc.ERRREQUEST
 	}
 	reqd, _ := proto.Marshal(req)
-	callback, e := c.cc.Call(ctx, 500000000, RpcPathSconfigSgroups, reqd, metadata.GetAllMetadata(ctx))
+	callback, e := c.cc.Call(ctx, 0, RpcPathSconfigSgroups, reqd, metadata.GetAllMetadata(ctx))
 	if e.(*error1.Error) != nil {
 		return nil, e
 	}
@@ -174,11 +179,41 @@ func (c *sconfigRpcClient) Sapps(ctx context.Context, req *Sappsreq) (*Sappsresp
 		return nil, rpc.ERRREQUEST
 	}
 	reqd, _ := proto.Marshal(req)
-	callback, e := c.cc.Call(ctx, 500000000, RpcPathSconfigSapps, reqd, metadata.GetAllMetadata(ctx))
+	callback, e := c.cc.Call(ctx, 0, RpcPathSconfigSapps, reqd, metadata.GetAllMetadata(ctx))
 	if e.(*error1.Error) != nil {
 		return nil, e
 	}
 	resp := new(Sappsresp)
+	if e := proto.Unmarshal(callback, resp); e != nil {
+		return nil, rpc.ERRRESPONSE
+	}
+	return resp, nil
+}
+func (c *sconfigRpcClient) Ssetwatchaddr(ctx context.Context, req *Ssetwatchaddrreq) (*Ssetwatchaddrresp, error) {
+	if req == nil {
+		return nil, rpc.ERRREQUEST
+	}
+	reqd, _ := proto.Marshal(req)
+	callback, e := c.cc.Call(ctx, 0, RpcPathSconfigSsetwatchaddr, reqd, metadata.GetAllMetadata(ctx))
+	if e.(*error1.Error) != nil {
+		return nil, e
+	}
+	resp := new(Ssetwatchaddrresp)
+	if e := proto.Unmarshal(callback, resp); e != nil {
+		return nil, rpc.ERRRESPONSE
+	}
+	return resp, nil
+}
+func (c *sconfigRpcClient) Sgetwatchaddr(ctx context.Context, req *Sgetwatchaddrreq) (*Sgetwatchaddrresp, error) {
+	if req == nil {
+		return nil, rpc.ERRREQUEST
+	}
+	reqd, _ := proto.Marshal(req)
+	callback, e := c.cc.Call(ctx, 0, RpcPathSconfigSgetwatchaddr, reqd, metadata.GetAllMetadata(ctx))
+	if e.(*error1.Error) != nil {
+		return nil, e
+	}
+	resp := new(Sgetwatchaddrresp)
 	if e := proto.Unmarshal(callback, resp); e != nil {
 		return nil, rpc.ERRRESPONSE
 	}
@@ -199,6 +234,10 @@ type SconfigRpcServer interface {
 	Sgroups(context.Context, *Sgroupsreq) (*Sgroupsresp, error)
 	//get all apps
 	Sapps(context.Context, *Sappsreq) (*Sappsresp, error)
+	//set watch addr
+	Ssetwatchaddr(context.Context, *Ssetwatchaddrreq) (*Ssetwatchaddrresp, error)
+	//get watch addr
+	Sgetwatchaddr(context.Context, *Sgetwatchaddrreq) (*Sgetwatchaddrresp, error)
 }
 
 func _Sconfig_Sinfo_RpcHandler(handler func(context.Context, *Sinforeq) (*Sinforesp, error)) rpc.OutsideHandler {
@@ -375,25 +414,69 @@ func _Sconfig_Sapps_RpcHandler(handler func(context.Context, *Sappsreq) (*Sappsr
 		ctx.Write(respd)
 	}
 }
+func _Sconfig_Ssetwatchaddr_RpcHandler(handler func(context.Context, *Ssetwatchaddrreq) (*Ssetwatchaddrresp, error)) rpc.OutsideHandler {
+	return func(ctx *rpc.Context) {
+		req := new(Ssetwatchaddrreq)
+		if e := proto.Unmarshal(ctx.GetBody(), req); e != nil {
+			ctx.Abort(rpc.ERRREQUEST)
+			return
+		}
+		resp, e := handler(ctx, req)
+		if e != nil {
+			ctx.Abort(e)
+			return
+		}
+		if resp == nil {
+			resp = new(Ssetwatchaddrresp)
+		}
+		respd, _ := proto.Marshal(resp)
+		ctx.Write(respd)
+	}
+}
+func _Sconfig_Sgetwatchaddr_RpcHandler(handler func(context.Context, *Sgetwatchaddrreq) (*Sgetwatchaddrresp, error)) rpc.OutsideHandler {
+	return func(ctx *rpc.Context) {
+		req := new(Sgetwatchaddrreq)
+		if e := proto.Unmarshal(ctx.GetBody(), req); e != nil {
+			ctx.Abort(rpc.ERRREQUEST)
+			return
+		}
+		resp, e := handler(ctx, req)
+		if e != nil {
+			ctx.Abort(e)
+			return
+		}
+		if resp == nil {
+			resp = new(Sgetwatchaddrresp)
+		}
+		respd, _ := proto.Marshal(resp)
+		ctx.Write(respd)
+	}
+}
 func RegisterSconfigRpcServer(engine *rpc.RpcServer, svc SconfigRpcServer, allmids map[string]rpc.OutsideHandler) error {
 	//avoid lint
 	_ = allmids
-	if e := engine.RegisterHandler(RpcPathSconfigSinfo, 500000000, _Sconfig_Sinfo_RpcHandler(svc.Sinfo)); e != nil {
+	if e := engine.RegisterHandler(RpcPathSconfigSinfo, 0, _Sconfig_Sinfo_RpcHandler(svc.Sinfo)); e != nil {
 		return e
 	}
-	if e := engine.RegisterHandler(RpcPathSconfigSset, 500000000, _Sconfig_Sset_RpcHandler(svc.Sset)); e != nil {
+	if e := engine.RegisterHandler(RpcPathSconfigSset, 0, _Sconfig_Sset_RpcHandler(svc.Sset)); e != nil {
 		return e
 	}
-	if e := engine.RegisterHandler(RpcPathSconfigSrollback, 500000000, _Sconfig_Srollback_RpcHandler(svc.Srollback)); e != nil {
+	if e := engine.RegisterHandler(RpcPathSconfigSrollback, 0, _Sconfig_Srollback_RpcHandler(svc.Srollback)); e != nil {
 		return e
 	}
-	if e := engine.RegisterHandler(RpcPathSconfigSget, 500000000, _Sconfig_Sget_RpcHandler(svc.Sget)); e != nil {
+	if e := engine.RegisterHandler(RpcPathSconfigSget, 0, _Sconfig_Sget_RpcHandler(svc.Sget)); e != nil {
 		return e
 	}
-	if e := engine.RegisterHandler(RpcPathSconfigSgroups, 500000000, _Sconfig_Sgroups_RpcHandler(svc.Sgroups)); e != nil {
+	if e := engine.RegisterHandler(RpcPathSconfigSgroups, 0, _Sconfig_Sgroups_RpcHandler(svc.Sgroups)); e != nil {
 		return e
 	}
-	if e := engine.RegisterHandler(RpcPathSconfigSapps, 500000000, _Sconfig_Sapps_RpcHandler(svc.Sapps)); e != nil {
+	if e := engine.RegisterHandler(RpcPathSconfigSapps, 0, _Sconfig_Sapps_RpcHandler(svc.Sapps)); e != nil {
+		return e
+	}
+	if e := engine.RegisterHandler(RpcPathSconfigSsetwatchaddr, 0, _Sconfig_Ssetwatchaddr_RpcHandler(svc.Ssetwatchaddr)); e != nil {
+		return e
+	}
+	if e := engine.RegisterHandler(RpcPathSconfigSgetwatchaddr, 0, _Sconfig_Sgetwatchaddr_RpcHandler(svc.Sgetwatchaddr)); e != nil {
 		return e
 	}
 	return nil

@@ -22,7 +22,6 @@ type statusRpcClient struct {
 	cc *rpc.RpcClient
 }
 
-//has race,will only return the first call's client,the config will use the first call's config
 func NewStatusRpcClient(c *rpc.ClientConfig, selfgroup, selfname string) (StatusRpcClient, error) {
 	cc, e := rpc.NewRpcClient(c, selfgroup, selfname, Group, Name)
 	if e != nil {

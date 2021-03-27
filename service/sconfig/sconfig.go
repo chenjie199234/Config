@@ -2,13 +2,15 @@ package sconfig
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 
 	"github.com/chenjie199234/Config/api"
 	"github.com/chenjie199234/Config/config"
 	sconfigdao "github.com/chenjie199234/Config/dao/sconfig"
 	"github.com/chenjie199234/Corelib/log"
-	//"github.com/chenjie199234/Corelib/rpc"
-	//"github.com/chenjie199234/Corelib/web"
+	"github.com/chenjie199234/Corelib/util/common"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 //Service subservice for sconfig business
@@ -28,6 +30,9 @@ func (s *Service) Sinfo(ctx context.Context, in *api.Sinforeq) (*api.Sinforesp, 
 	sum, conf, e := s.sconfigDao.MongoGetInfo(ctx, in.Groupname, in.Appname, in.OpNum)
 	if e != nil {
 		log.Error("[sconfig.Info] error:", e)
+		if e == mongo.ErrNoDocuments {
+			return &api.Sinforesp{}, nil
+		}
 		return nil, e
 	}
 	if sum == nil && conf == nil {
@@ -43,6 +48,18 @@ func (s *Service) Sinfo(ctx context.Context, in *api.Sinforeq) (*api.Sinforesp, 
 
 //set one specific app's config
 func (s *Service) Sset(ctx context.Context, in *api.Ssetreq) (*api.Ssetresp, error) {
+	if in.AppConfig == "" {
+		in.AppConfig = "{}"
+	}
+	if len(in.AppConfig) < 2 || in.AppConfig[0] != '{' || in.AppConfig[len(in.AppConfig)-1] != '}' || !json.Valid(common.Str2byte(in.AppConfig)) {
+		return nil, errors.New("app_config must in json object format")
+	}
+	if in.SourceConfig == "" {
+		in.SourceConfig = "{}"
+	}
+	if len(in.SourceConfig) < 2 || in.SourceConfig[0] != '{' || in.SourceConfig[len(in.SourceConfig)-1] != '}' || !json.Valid(common.Str2byte(in.SourceConfig)) {
+		return nil, errors.New("source_config must in json object format")
+	}
 	e := s.sconfigDao.MongoSetConfig(ctx, in.Groupname, in.Appname, in.AppConfig, in.SourceConfig)
 	if e != nil {
 		log.Error("[sconfig.Set] error:", e)
@@ -66,6 +83,9 @@ func (s *Service) Sget(ctx context.Context, in *api.Sgetreq) (*api.Sgetresp, err
 	conf, e := s.sconfigDao.MongoGetConfig(ctx, in.Groupname, in.Appname, in.Id)
 	if e != nil {
 		log.Error("[sconfig.Get] error:", e)
+		if e == mongo.ErrNoDocuments {
+			return &api.Sgetresp{}, nil
+		}
 		return nil, e
 	}
 	return &api.Sgetresp{AppConfig: conf.AppConfig, SourceConfig: conf.SourceConfig}, nil
@@ -89,6 +109,46 @@ func (s *Service) Sapps(ctx context.Context, in *api.Sappsreq) (*api.Sappsresp, 
 		return nil, e
 	}
 	return &api.Sappsresp{Apps: apps}, nil
+}
+
+//set watch addr
+func (s *Service) Ssetwatchaddr(ctx context.Context, in *api.Ssetwatchaddrreq) (*api.Ssetwatchaddrresp, error) {
+	if in.Username == "" || in.Passwd == "" || len(in.Addrs) == 0 || in.ReplicaSetName == "" {
+		if e := s.sconfigDao.MongoDelWatchAddr(ctx); e != nil {
+			log.Error("[sconfig.Ssetwatchaddr] error:", e)
+			return nil, e
+		}
+		return &api.Ssetwatchaddrresp{}, nil
+	} else {
+		if e := s.sconfigDao.MongoSetWatchAddr(ctx, &sconfigdao.WatchAddr{
+			Username:       in.Username,
+			Passwd:         in.Passwd,
+			Addrs:          in.Addrs,
+			ReplicaSetName: in.ReplicaSetName,
+		}); e != nil {
+			log.Error("[sconfig.Ssetwatchaddr] error:", e)
+			return nil, e
+		}
+		return &api.Ssetwatchaddrresp{}, nil
+	}
+}
+
+//get watch addr
+func (s *Service) Sgetwatchaddr(ctx context.Context, in *api.Sgetwatchaddrreq) (*api.Sgetwatchaddrresp, error) {
+	wa, e := s.sconfigDao.MongoGetWatchAddr(ctx)
+	if e != nil {
+		log.Error("[sconfig.Sgetwatchaddr] error:", e)
+		if e == mongo.ErrNoDocuments {
+			return &api.Sgetwatchaddrresp{}, nil
+		}
+		return nil, e
+	}
+	return &api.Sgetwatchaddrresp{
+		Username:       wa.Username,
+		Passwd:         wa.Passwd,
+		Addrs:          wa.Addrs,
+		ReplicaSetName: wa.ReplicaSetName,
+	}, nil
 }
 
 //Stop -

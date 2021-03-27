@@ -26,7 +26,6 @@ type statusWebClient struct {
 	cc *web.WebClient
 }
 
-//has race,will only return the first call's client,the config will use the first call's config
 func NewStatusWebClient(c *web.ClientConfig, selfgroup, selfname string) (StatusWebClient, error) {
 	cc, e := web.NewWebClient(c, selfgroup, selfname, Group, Name)
 	if e != nil {

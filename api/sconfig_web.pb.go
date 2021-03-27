@@ -20,6 +20,8 @@ var WebPathSconfigSrollback = "/config.Sconfig/Srollback"
 var WebPathSconfigSget = "/config.Sconfig/Sget"
 var WebPathSconfigSgroups = "/config.Sconfig/Sgroups"
 var WebPathSconfigSapps = "/config.Sconfig/Sapps"
+var WebPathSconfigSsetwatchaddr = "/config.Sconfig/Ssetwatchaddr"
+var WebPathSconfigSgetwatchaddr = "/config.Sconfig/Sgetwatchaddr"
 
 // SconfigWebClient is the client API for Sconfig service.
 type SconfigWebClient interface {
@@ -35,13 +37,16 @@ type SconfigWebClient interface {
 	Sgroups(context.Context, *Sgroupsreq) (*Sgroupsresp, error)
 	//get all apps
 	Sapps(context.Context, *Sappsreq) (*Sappsresp, error)
+	//set watch addr
+	Ssetwatchaddr(context.Context, *Ssetwatchaddrreq) (*Ssetwatchaddrresp, error)
+	//get watch addr
+	Sgetwatchaddr(context.Context, *Sgetwatchaddrreq) (*Sgetwatchaddrresp, error)
 }
 
 type sconfigWebClient struct {
 	cc *web.WebClient
 }
 
-//has race,will only return the first call's client,the config will use the first call's config
 func NewSconfigWebClient(c *web.ClientConfig, selfgroup, selfname string) (SconfigWebClient, error) {
 	cc, e := web.NewWebClient(c, selfgroup, selfname, Group, Name)
 	if e != nil {
@@ -102,7 +107,7 @@ func (c *sconfigWebClient) Sinfo(ctx context.Context, req *Sinforeq) (*Sinforesp
 	if buf.Len() > 0 {
 		buf.Bytes()[0] = '?'
 	}
-	callback, e := c.cc.Get(ctx, 500000000, WebPathSconfigSinfo+buf.String(), header)
+	callback, e := c.cc.Get(ctx, 0, WebPathSconfigSinfo+buf.String(), header)
 	bufpool.PutBuffer(buf)
 	if e != nil {
 		return nil, fmt.Errorf("call error:" + e.Error())
@@ -148,7 +153,7 @@ func (c *sconfigWebClient) Sset(ctx context.Context, req *Ssetreq) (*Ssetresp, e
 	}
 	header.Set("Content-Type", "application/json")
 	reqdata, _ := json.Marshal(req)
-	callback, e := c.cc.Post(ctx, 500000000, WebPathSconfigSset, header, reqdata)
+	callback, e := c.cc.Post(ctx, 0, WebPathSconfigSset, header, reqdata)
 	if e != nil {
 		return nil, fmt.Errorf("call error:" + e.Error())
 	}
@@ -197,7 +202,7 @@ func (c *sconfigWebClient) Srollback(ctx context.Context, req *Srollbackreq) (*S
 	}
 	header.Set("Content-Type", "application/json")
 	reqdata, _ := json.Marshal(req)
-	callback, e := c.cc.Post(ctx, 500000000, WebPathSconfigSrollback, header, reqdata)
+	callback, e := c.cc.Post(ctx, 0, WebPathSconfigSrollback, header, reqdata)
 	if e != nil {
 		return nil, fmt.Errorf("call error:" + e.Error())
 	}
@@ -270,7 +275,7 @@ func (c *sconfigWebClient) Sget(ctx context.Context, req *Sgetreq) (*Sgetresp, e
 	if buf.Len() > 0 {
 		buf.Bytes()[0] = '?'
 	}
-	callback, e := c.cc.Get(ctx, 500000000, WebPathSconfigSget+buf.String(), header)
+	callback, e := c.cc.Get(ctx, 0, WebPathSconfigSget+buf.String(), header)
 	bufpool.PutBuffer(buf)
 	if e != nil {
 		return nil, fmt.Errorf("call error:" + e.Error())
@@ -311,7 +316,7 @@ func (c *sconfigWebClient) Sgroups(ctx context.Context, req *Sgroupsreq) (*Sgrou
 	if buf.Len() > 0 {
 		buf.Bytes()[0] = '?'
 	}
-	callback, e := c.cc.Get(ctx, 500000000, WebPathSconfigSgroups+buf.String(), header)
+	callback, e := c.cc.Get(ctx, 0, WebPathSconfigSgroups+buf.String(), header)
 	bufpool.PutBuffer(buf)
 	if e != nil {
 		return nil, fmt.Errorf("call error:" + e.Error())
@@ -363,7 +368,7 @@ func (c *sconfigWebClient) Sapps(ctx context.Context, req *Sappsreq) (*Sappsresp
 	if buf.Len() > 0 {
 		buf.Bytes()[0] = '?'
 	}
-	callback, e := c.cc.Get(ctx, 500000000, WebPathSconfigSapps+buf.String(), header)
+	callback, e := c.cc.Get(ctx, 0, WebPathSconfigSapps+buf.String(), header)
 	bufpool.PutBuffer(buf)
 	if e != nil {
 		return nil, fmt.Errorf("call error:" + e.Error())
@@ -377,6 +382,84 @@ func (c *sconfigWebClient) Sapps(ctx context.Context, req *Sappsreq) (*Sappsresp
 		return nil, fmt.Errorf(common.Byte2str(data))
 	}
 	resp := new(Sappsresp)
+	if len(data) > 0 {
+		if e = json.Unmarshal(data, resp); e != nil {
+			return nil, fmt.Errorf("response data format errors" + e.Error())
+		}
+	}
+	return resp, nil
+}
+func (c *sconfigWebClient) Ssetwatchaddr(ctx context.Context, req *Ssetwatchaddrreq) (*Ssetwatchaddrresp, error) {
+	if req == nil {
+		return nil, fmt.Errorf("bad request:nil")
+	}
+	var header http.Header
+	if realcrx, ok := ctx.(*web.Context); ok {
+		header = realcrx.GetHeaders()
+	}
+	if header == nil {
+		header = make(http.Header)
+	}
+	if md := metadata.GetAllMetadata(ctx); len(md) != 0 {
+		d, _ := json.Marshal(md)
+		header.Set("Metadata", common.Byte2str(d))
+	}
+	header.Set("Content-Type", "application/json")
+	reqdata, _ := json.Marshal(req)
+	callback, e := c.cc.Post(ctx, 0, WebPathSconfigSsetwatchaddr, header, reqdata)
+	if e != nil {
+		return nil, fmt.Errorf("call error:" + e.Error())
+	}
+	defer callback.Body.Close()
+	data, e := io.ReadAll(callback.Body)
+	if e != nil {
+		return nil, fmt.Errorf("read response error:" + e.Error())
+	}
+	if callback.StatusCode/100 == 5 || callback.StatusCode/100 == 4 {
+		return nil, fmt.Errorf(common.Byte2str(data))
+	}
+	resp := new(Ssetwatchaddrresp)
+	if len(data) > 0 {
+		if e = json.Unmarshal(data, resp); e != nil {
+			return nil, fmt.Errorf("response data format errors" + e.Error())
+		}
+	}
+	return resp, nil
+}
+func (c *sconfigWebClient) Sgetwatchaddr(ctx context.Context, req *Sgetwatchaddrreq) (*Sgetwatchaddrresp, error) {
+	if req == nil {
+		return nil, fmt.Errorf("bad request:nil")
+	}
+	var header http.Header
+	if realcrx, ok := ctx.(*web.Context); ok {
+		header = realcrx.GetHeaders()
+	}
+	if header == nil {
+		header = make(http.Header)
+	}
+	if md := metadata.GetAllMetadata(ctx); len(md) != 0 {
+		d, _ := json.Marshal(md)
+		header.Set("Metadata", common.Byte2str(d))
+	}
+	header.Set("Content-Type", "application/x-www-form-urlencoded")
+	buf := bufpool.GetBuffer()
+	if buf.Len() > 0 {
+		buf.Bytes()[0] = '?'
+	}
+	callback, e := c.cc.Get(ctx, 0, WebPathSconfigSgetwatchaddr+buf.String(), header)
+	bufpool.PutBuffer(buf)
+	if e != nil {
+		return nil, fmt.Errorf("call error:" + e.Error())
+	}
+	defer callback.Body.Close()
+	data, e := io.ReadAll(callback.Body)
+	if e != nil {
+		return nil, fmt.Errorf("read response error:" + e.Error())
+	}
+	if callback.StatusCode/100 == 5 || callback.StatusCode/100 == 4 {
+		return nil, fmt.Errorf(common.Byte2str(data))
+	}
+	resp := new(Sgetwatchaddrresp)
 	if len(data) > 0 {
 		if e = json.Unmarshal(data, resp); e != nil {
 			return nil, fmt.Errorf("response data format errors" + e.Error())
@@ -399,6 +482,10 @@ type SconfigWebServer interface {
 	Sgroups(context.Context, *Sgroupsreq) (*Sgroupsresp, error)
 	//get all apps
 	Sapps(context.Context, *Sappsreq) (*Sappsresp, error)
+	//set watch addr
+	Ssetwatchaddr(context.Context, *Ssetwatchaddrreq) (*Ssetwatchaddrresp, error)
+	//get watch addr
+	Sgetwatchaddr(context.Context, *Sgetwatchaddrreq) (*Sgetwatchaddrresp, error)
 }
 
 func _Sconfig_Sinfo_WebHandler(handler func(context.Context, *Sinforeq) (*Sinforesp, error)) web.OutsideHandler {
@@ -827,25 +914,149 @@ func _Sconfig_Sapps_WebHandler(handler func(context.Context, *Sappsreq) (*Sappsr
 		}
 	}
 }
+func _Sconfig_Ssetwatchaddr_WebHandler(handler func(context.Context, *Ssetwatchaddrreq) (*Ssetwatchaddrresp, error)) web.OutsideHandler {
+	return func(ctx *web.Context) {
+		req := new(Ssetwatchaddrreq)
+		if ctx.GetMethod() != http.MethodGet && ctx.GetContentType() == "application/json" {
+			data, e := ctx.GetBody()
+			if e != nil {
+				ctx.WriteString(http.StatusInternalServerError, "server error:read request body error:"+e.Error())
+				return
+			}
+			if len(data) != 0 {
+				if e := json.Unmarshal(data, req); e != nil {
+					ctx.WriteString(http.StatusBadRequest, "bad request:json format error:"+e.Error())
+					return
+				}
+			}
+		} else {
+			if e := ctx.ParseForm(); e != nil {
+				ctx.WriteString(http.StatusBadRequest, "bad request:form format error:"+e.Error())
+				return
+			}
+			buf := bufpool.GetBuffer()
+			buf.Append("{")
+			hasfields := false
+			if temp := ctx.GetForm("username"); len(temp) != 0 {
+				buf.Append("\"username\":")
+				buf.Append(temp)
+				buf.Append(",")
+				hasfields = true
+			}
+			if temp := ctx.GetForm("passwd"); len(temp) != 0 {
+				buf.Append("\"passwd\":")
+				buf.Append(temp)
+				buf.Append(",")
+				hasfields = true
+			}
+			if temp := ctx.GetForm("addrs"); len(temp) != 0 {
+				buf.Append("\"addrs\":")
+				buf.Append(temp)
+				buf.Append(",")
+				hasfields = true
+			}
+			if temp := ctx.GetForm("replica_set_name"); len(temp) != 0 {
+				buf.Append("\"replica_set_name\":")
+				buf.Append(temp)
+				buf.Append(",")
+				hasfields = true
+			}
+			if hasfields {
+				buf.Bytes()[buf.Len()-1] = '}'
+			} else {
+				buf.Append("}")
+			}
+			if buf.Len() > 2 {
+				if e := json.Unmarshal(buf.Bytes(), req); e != nil {
+					ctx.WriteString(http.StatusBadRequest, "bad request:form format error:"+e.Error())
+					return
+				}
+			}
+			bufpool.PutBuffer(buf)
+		}
+		resp, e := handler(ctx, req)
+		if e != nil {
+			ctx.WriteString(http.StatusInternalServerError, e.Error())
+		} else if resp == nil {
+			ctx.WriteString(http.StatusOK, "{}")
+		} else {
+			respd, _ := json.Marshal(resp)
+			ctx.Write(http.StatusOK, respd)
+		}
+	}
+}
+func _Sconfig_Sgetwatchaddr_WebHandler(handler func(context.Context, *Sgetwatchaddrreq) (*Sgetwatchaddrresp, error)) web.OutsideHandler {
+	return func(ctx *web.Context) {
+		req := new(Sgetwatchaddrreq)
+		if ctx.GetMethod() != http.MethodGet && ctx.GetContentType() == "application/json" {
+			data, e := ctx.GetBody()
+			if e != nil {
+				ctx.WriteString(http.StatusInternalServerError, "server error:read request body error:"+e.Error())
+				return
+			}
+			if len(data) != 0 {
+				if e := json.Unmarshal(data, req); e != nil {
+					ctx.WriteString(http.StatusBadRequest, "bad request:json format error:"+e.Error())
+					return
+				}
+			}
+		} else {
+			if e := ctx.ParseForm(); e != nil {
+				ctx.WriteString(http.StatusBadRequest, "bad request:form format error:"+e.Error())
+				return
+			}
+			buf := bufpool.GetBuffer()
+			buf.Append("{")
+			hasfields := false
+			if hasfields {
+				buf.Bytes()[buf.Len()-1] = '}'
+			} else {
+				buf.Append("}")
+			}
+			if buf.Len() > 2 {
+				if e := json.Unmarshal(buf.Bytes(), req); e != nil {
+					ctx.WriteString(http.StatusBadRequest, "bad request:form format error:"+e.Error())
+					return
+				}
+			}
+			bufpool.PutBuffer(buf)
+		}
+		resp, e := handler(ctx, req)
+		if e != nil {
+			ctx.WriteString(http.StatusInternalServerError, e.Error())
+		} else if resp == nil {
+			ctx.WriteString(http.StatusOK, "{}")
+		} else {
+			respd, _ := json.Marshal(resp)
+			ctx.Write(http.StatusOK, respd)
+		}
+	}
+}
 func RegisterSconfigWebServer(engine *web.WebServer, svc SconfigWebServer, allmids map[string]web.OutsideHandler) error {
 	//avoid lint
 	_ = allmids
-	if e := engine.Get(WebPathSconfigSinfo, 500000000, _Sconfig_Sinfo_WebHandler(svc.Sinfo)); e != nil {
+	if e := engine.Get(WebPathSconfigSinfo, 0, _Sconfig_Sinfo_WebHandler(svc.Sinfo)); e != nil {
 		return e
 	}
-	if e := engine.Post(WebPathSconfigSset, 500000000, _Sconfig_Sset_WebHandler(svc.Sset)); e != nil {
+	if e := engine.Post(WebPathSconfigSset, 0, _Sconfig_Sset_WebHandler(svc.Sset)); e != nil {
 		return e
 	}
-	if e := engine.Post(WebPathSconfigSrollback, 500000000, _Sconfig_Srollback_WebHandler(svc.Srollback)); e != nil {
+	if e := engine.Post(WebPathSconfigSrollback, 0, _Sconfig_Srollback_WebHandler(svc.Srollback)); e != nil {
 		return e
 	}
-	if e := engine.Get(WebPathSconfigSget, 500000000, _Sconfig_Sget_WebHandler(svc.Sget)); e != nil {
+	if e := engine.Get(WebPathSconfigSget, 0, _Sconfig_Sget_WebHandler(svc.Sget)); e != nil {
 		return e
 	}
-	if e := engine.Get(WebPathSconfigSgroups, 500000000, _Sconfig_Sgroups_WebHandler(svc.Sgroups)); e != nil {
+	if e := engine.Get(WebPathSconfigSgroups, 0, _Sconfig_Sgroups_WebHandler(svc.Sgroups)); e != nil {
 		return e
 	}
-	if e := engine.Get(WebPathSconfigSapps, 500000000, _Sconfig_Sapps_WebHandler(svc.Sapps)); e != nil {
+	if e := engine.Get(WebPathSconfigSapps, 0, _Sconfig_Sapps_WebHandler(svc.Sapps)); e != nil {
+		return e
+	}
+	if e := engine.Post(WebPathSconfigSsetwatchaddr, 0, _Sconfig_Ssetwatchaddr_WebHandler(svc.Ssetwatchaddr)); e != nil {
+		return e
+	}
+	if e := engine.Get(WebPathSconfigSgetwatchaddr, 0, _Sconfig_Sgetwatchaddr_WebHandler(svc.Sgetwatchaddr)); e != nil {
 		return e
 	}
 	return nil
