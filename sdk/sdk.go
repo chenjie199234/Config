@@ -44,7 +44,6 @@ func NewServerSdk(sdktype int, interval time.Duration, path string, selfgroup, s
 	if interval == 0 {
 		interval = time.Second
 	}
-	var e error
 	switch sdktype {
 	case 1:
 		return instance.watch()

@@ -1,6 +1,7 @@
 package xrpc
 
 import (
+	"sync"
 	"time"
 
 	"github.com/chenjie199234/Config/api"
@@ -15,7 +16,7 @@ import (
 var s *rpc.RpcServer
 
 //StartRpcServer -
-func StartRpcServer() {
+func StartRpcServer(wg *sync.WaitGroup) {
 	c := config.GetRpcServerConfig()
 	rpcc := &rpc.ServerConfig{
 		GlobalTimeout:          time.Duration(c.GlobalTimeout),
@@ -52,10 +53,13 @@ func StartRpcServer() {
 	//return
 	//}
 
-	if e = discoverysdk.RegRpc(9000); e != nil {
-		log.Error("[xrpc] register rpc to discovery server error:", e)
-		return
+	if config.EC.ServerVerifyDatas != nil {
+		if e = discoverysdk.RegRpc(9000); e != nil {
+			log.Error("[xrpc] register rpc to discovery server error:", e)
+			return
+		}
 	}
+	wg.Done()
 	if e = s.StartRpcServer(":9000"); e != nil {
 		log.Error("[xrpc] start error:", e)
 		return
