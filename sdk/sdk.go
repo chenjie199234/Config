@@ -47,27 +47,16 @@ func NewServerSdk(sdktype int, interval time.Duration, path string, selfgroup, s
 	var e error
 	switch sdktype {
 	case 1:
-		if e = instance.watch(); e == nil {
-			return nil
-		}
-		log.Error(e)
+		return instance.watch()
 	case 2:
-		if e = instance.dbloop(interval); e == nil {
-			return nil
-		}
-		log.Error(e)
+		return instance.dbloop(interval)
 	case 3:
-		if e = instance.rpcloop(interval); e == nil {
-			return nil
-		}
-		log.Error(e)
+		return instance.rpcloop(interval)
 	case 4:
-		if e = instance.webloop(interval); e == nil {
-			return nil
-		}
-		log.Error(e)
+		return instance.webloop(interval)
+	default:
+		return errors.New("[config.sdk] unknown sdk type")
 	}
-	return errors.New("[config.sdk] init sdk failed")
 }
 func (s *sdk) dbloop(interval time.Duration) error {
 	c, e := api.NewSconfigWebClient(nil, s.selfgroup, s.selfname)
