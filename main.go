@@ -52,9 +52,9 @@ func main() {
 		case <-tmer.C:
 			webc := config.GetWebServerConfig()
 			if webc != nil && len(webc.CertKey) > 0 {
-				discoverysdk.RegisterSelf(9000, 8000, "https", nil)
+				discoverysdk.RegisterSelf(nil)
 			} else {
-				discoverysdk.RegisterSelf(9000, 8000, "http", nil)
+				discoverysdk.RegisterSelf(nil)
 			}
 		case <-stop:
 		}
@@ -79,4 +79,3 @@ func main() {
 	}()
 	wg.Wait()
 }
-

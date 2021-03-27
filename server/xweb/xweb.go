@@ -9,6 +9,7 @@ import (
 	"github.com/chenjie199234/Corelib/log"
 	"github.com/chenjie199234/Corelib/web"
 	"github.com/chenjie199234/Corelib/web/mids"
+	discoverysdk "github.com/chenjie199234/Discovery/sdk"
 )
 
 var s *web.WebServer
@@ -58,6 +59,15 @@ func StartWebServer() {
 	//return
 	//}
 
+	if len(c.CertKey) > 0 {
+		e = discoverysdk.RegWeb(8000, "http")
+	} else {
+		e = discoverysdk.RegWeb(8000, "https")
+	}
+	if e != nil {
+		log.Error("[xweb] register web to discovery server error:", e)
+		return
+	}
 	if e = s.StartWebServer(":8000", c.CertKey); e != nil {
 		log.Error("[xweb] start error:", e)
 		return

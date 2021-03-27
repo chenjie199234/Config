@@ -9,6 +9,7 @@ import (
 	"github.com/chenjie199234/Corelib/log"
 	"github.com/chenjie199234/Corelib/rpc"
 	"github.com/chenjie199234/Corelib/rpc/mids"
+	discoverysdk "github.com/chenjie199234/Discovery/sdk"
 )
 
 var s *rpc.RpcServer
@@ -51,6 +52,10 @@ func StartRpcServer() {
 	//return
 	//}
 
+	if e = discoverysdk.RegRpc(9000); e != nil {
+		log.Error("[xrpc] register rpc to discovery server error:", e)
+		return
+	}
 	if e = s.StartRpcServer(":9000"); e != nil {
 		log.Error("[xrpc] start error:", e)
 		return
