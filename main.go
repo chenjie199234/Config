@@ -70,6 +70,8 @@ func main() {
 	signal.Notify(ch, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 	<-ch
 	close(stopreg)
+	//unregisterself
+	discoverysdk.UnRegisterSelf()
 	//stop the whole business service
 	service.StopService()
 	//stop low level net service
