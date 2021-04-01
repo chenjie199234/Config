@@ -14,6 +14,7 @@ import (
 	"github.com/chenjie199234/Corelib/log"
 	"github.com/chenjie199234/Corelib/rpc"
 	"github.com/chenjie199234/Corelib/util/common"
+	"github.com/chenjie199234/Corelib/web"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readconcern"
@@ -30,11 +31,20 @@ type sdk struct {
 var instance *sdk
 
 //sdktype:
-//1-watch,get db addr from config server and watch self's config change by watch the db
-//2-dbloop,get db addr from config server and loop get self's config form db
-//3-rpcloop,loop get self's config by call config server through rpc protocol,config server will get data from db and return back
-//4-webloop,loop get self's config by call config server through web protocol,config server will get data from db and return back
-func NewServerSdk(sdktype int, interval time.Duration, path string, selfgroup, selfname string) error {
+//1-watch,get db addr from config server through web protocol(k8sdns or self's discovry),watch self's config change by watch the db
+//2-dbloop,get db addr from config server through web protocol(k8sdns or self's discovry),loop get self's config form db
+//3-rpcloop,loop get self's config by call config server through rpc protocol(self's discovry),config server will get data from db and return back
+//4-webloop,loop get self's config by call config server through web protocol(k8sdns or self's discovry),config server will get data from db and return back
+//k8sdns:
+//when sdktype is 1,2,4 sdk will call config server through web protocol
+//if k8sdns is true,the call will use k8s's dns
+//if k8sdns is false,the call will use self's discovry
+//tls:
+//when sdktype is 1,2,4 sdk will call config server through web protocol,does this need tls
+func NewServerSdk(sdktype int, k8sdns, tls bool, interval time.Duration, path string, selfgroup, selfname string) error {
+	if sdktype != 1 && sdktype != 2 && sdktype != 3 && sdktype != 4 {
+		return errors.New("[config.sdk] unknown sdk type")
+	}
 	if !atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&instance)), nil, unsafe.Pointer(&sdk{
 		path:  path,
 		opnum: 0,
@@ -46,21 +56,38 @@ func NewServerSdk(sdktype int, interval time.Duration, path string, selfgroup, s
 	}
 	switch sdktype {
 	case 1:
-		return instance.watch()
+		return instance.watch(k8sdns, tls)
 	case 2:
-		return instance.dbloop(interval)
+		return instance.dbloop(k8sdns, tls, interval)
 	case 3:
 		return instance.rpcloop(interval)
 	case 4:
-		return instance.webloop(interval)
-	default:
-		return errors.New("[config.sdk] unknown sdk type")
+		return instance.webloop(k8sdns, tls, interval)
 	}
+	return nil
 }
-func (s *sdk) dbloop(interval time.Duration) error {
-	c, e := api.NewSconfigWebClient(nil, s.selfgroup, s.selfname)
-	if e != nil {
-		return e
+func (s *sdk) dbloop(k8sdns, tls bool, interval time.Duration) error {
+	var c api.SconfigWebClient
+	var e error
+	if !k8sdns {
+		c, e = api.NewSconfigWebClient(nil, s.selfgroup, s.selfname)
+		if e != nil {
+			return e
+		}
+	} else {
+		discover := func(group, name string, client *web.WebClient) {
+			all := make(map[string][]string)
+			if tls {
+				all["https://config.default"] = []string{"k8sdns"}
+			} else {
+				all["http://config.default"] = []string{"k8sdns"}
+			}
+			client.UpdateDiscovery(all, nil)
+		}
+		c, e = api.NewSconfigWebClient(&web.ClientConfig{Discover: discover}, s.selfgroup, s.selfname)
+		if e != nil {
+			return e
+		}
 	}
 	//init
 	var resp *api.Sgetwatchaddrresp
@@ -69,8 +96,7 @@ func (s *sdk) dbloop(interval time.Duration) error {
 	for {
 		//discovry and connect may take some time
 		//loop and sleep to wait it finish
-		sleeptime := 50
-		time.Sleep(time.Millisecond * time.Duration(sleeptime))
+		time.Sleep(time.Millisecond * 50)
 		resp, e = c.Sgetwatchaddr(ctx, &api.Sgetwatchaddrreq{})
 		if e != nil {
 			log.Error("[config.sdk.dbloop.init] call config server error:", e)
@@ -162,8 +188,7 @@ func (s *sdk) rpcloop(interval time.Duration) error {
 	for {
 		//discovry and connect may take some time
 		//loop and sleep to wait it finish
-		sleeptime := 50
-		time.Sleep(time.Millisecond * time.Duration(sleeptime))
+		time.Sleep(time.Millisecond * 50)
 		resp, e := c.Sinfo(ctx, &api.Sinforeq{Groupname: s.selfgroup, Appname: s.selfname, OpNum: s.opnum})
 		if e != nil {
 			log.Error("[config.sdk.rpcloop.init] call config server error:", e)
@@ -205,10 +230,28 @@ func (s *sdk) rpcloop(interval time.Duration) error {
 	}()
 	return nil
 }
-func (s *sdk) webloop(interval time.Duration) error {
-	c, e := api.NewSconfigWebClient(nil, s.selfgroup, s.selfname)
-	if e != nil {
-		return e
+func (s *sdk) webloop(k8sdns, tls bool, interval time.Duration) error {
+	var c api.SconfigWebClient
+	var e error
+	if !k8sdns {
+		c, e = api.NewSconfigWebClient(nil, s.selfgroup, s.selfname)
+		if e != nil {
+			return e
+		}
+	} else {
+		discover := func(group, name string, client *web.WebClient) {
+			all := make(map[string][]string)
+			if tls {
+				all["https://config.default"] = []string{"k8sdns"}
+			} else {
+				all["http://config.default"] = []string{"k8sdns"}
+			}
+			client.UpdateDiscovery(all, nil)
+		}
+		c, e = api.NewSconfigWebClient(&web.ClientConfig{Discover: discover}, s.selfgroup, s.selfname)
+		if e != nil {
+			return e
+		}
 	}
 	//init
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Second))
@@ -216,12 +259,11 @@ func (s *sdk) webloop(interval time.Duration) error {
 	for {
 		//discovry and connect may take some time
 		//loop and sleep to wait it finish
-		sleeptime := 50
-		time.Sleep(time.Millisecond * time.Duration(sleeptime))
+		time.Sleep(time.Millisecond * 50)
 		resp, e := c.Sinfo(ctx, &api.Sinforeq{Groupname: s.selfgroup, Appname: s.selfname, OpNum: s.opnum})
 		if e != nil {
 			log.Error("[config.sdk.webloop.init] call config server error:", e)
-			if e == rpc.ERRCTXTIMEOUT || e == rpc.ERRCTXCANCEL {
+			if e == context.DeadlineExceeded || e == context.Canceled {
 				return errors.New("[config.sdk.webloop.init] call config server failed")
 			}
 			continue
@@ -259,10 +301,28 @@ func (s *sdk) webloop(interval time.Duration) error {
 	}()
 	return nil
 }
-func (s *sdk) watch() error {
-	c, e := api.NewSconfigWebClient(nil, s.selfgroup, s.selfname)
-	if e != nil {
-		return e
+func (s *sdk) watch(k8sdns, tls bool) error {
+	var c api.SconfigWebClient
+	var e error
+	if !k8sdns {
+		c, e = api.NewSconfigWebClient(nil, s.selfgroup, s.selfname)
+		if e != nil {
+			return e
+		}
+	} else {
+		discover := func(group, name string, client *web.WebClient) {
+			all := make(map[string][]string)
+			if tls {
+				all["https://config.default"] = []string{"k8sdns"}
+			} else {
+				all["http://config.default"] = []string{"k8sdns"}
+			}
+			client.UpdateDiscovery(all, nil)
+		}
+		c, e = api.NewSconfigWebClient(&web.ClientConfig{Discover: discover}, s.selfgroup, s.selfname)
+		if e != nil {
+			return e
+		}
 	}
 	//init
 	var resp *api.Sgetwatchaddrresp
@@ -271,8 +331,7 @@ func (s *sdk) watch() error {
 	for {
 		//discovry and connect may take some time
 		//loop and sleep to wait it finish
-		sleeptime := 50
-		time.Sleep(time.Millisecond * time.Duration(sleeptime))
+		time.Sleep(time.Millisecond * 50)
 		resp, e = c.Sgetwatchaddr(ctx, &api.Sgetwatchaddrreq{})
 		if e != nil {
 			log.Error("[config.sdk.watch.init] call config server error:", e)

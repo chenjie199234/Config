@@ -54,13 +54,6 @@ spec:
             periodSeconds: 1
             successThreshold: 1
             failureThreshold: 3
-          ports:
-            - name: web
-              containerPort: 8000
-              protocol: TCP
-            - name: rpc
-              containerPort: 9000
-              protocol: TCP
           volumeMounts:
             - name: config-config-volume
               mountPath: /root/app/k8sconfig
@@ -101,3 +94,24 @@ spec:
       target:
         type: AverageValue
         averageValue: 3400m
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: config-service
+  namespace: default
+  labels:
+    app: config
+spec:
+  type: ClusterIP
+  ports:
+  - name: webtls
+    protocol: TCP
+    port: 443
+    targetPort: 8001
+  - name: web
+    protocol: TCP
+    port: 80
+    targetPort: 8000
+  selector:
+    app: config
