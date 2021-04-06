@@ -31,17 +31,17 @@ type sdk struct {
 var instance *sdk
 
 //sdktype:
-//1-watch,get db addr from config server through web protocol(k8sdns or self's discovry),watch self's config change by watch the db
-//2-dbloop,get db addr from config server through web protocol(k8sdns or self's discovry),loop get self's config form db
+//1-watch,get db addr from config server through web protocol(kubernetesdns or self's discovry),watch self's config change by watch the db
+//2-dbloop,get db addr from config server through web protocol(kubernetesdns or self's discovry),loop get self's config form db
 //3-rpcloop,loop get self's config by call config server through rpc protocol(self's discovry),config server will get data from db and return back
-//4-webloop,loop get self's config by call config server through web protocol(k8sdns or self's discovry),config server will get data from db and return back
-//k8sdns:
+//4-webloop,loop get self's config by call config server through web protocol(kubernetesdns or self's discovry),config server will get data from db and return back
+//kubernetesdns:
 //when sdktype is 1,2,4 sdk will call config server through web protocol
-//if k8sdns is true,the call will use k8s's dns
-//if k8sdns is false,the call will use self's discovry
+//if kubernetesdns is true,the call will use k8s's dns
+//if kubernetesdns is false,the call will use self's discovry
 //tls:
 //when sdktype is 1,2,4 sdk will call config server through web protocol,does this need tls
-func NewServerSdk(sdktype int, k8sdns, tls bool, interval time.Duration, path string, selfgroup, selfname string) error {
+func NewServerSdk(sdktype int, kubernetesdns, tls bool, interval time.Duration, path string, selfgroup, selfname string) error {
 	if sdktype != 1 && sdktype != 2 && sdktype != 3 && sdktype != 4 {
 		return errors.New("[config.sdk] unknown sdk type")
 	}
@@ -56,20 +56,20 @@ func NewServerSdk(sdktype int, k8sdns, tls bool, interval time.Duration, path st
 	}
 	switch sdktype {
 	case 1:
-		return instance.watch(k8sdns, tls)
+		return instance.watch(kubernetesdns, tls)
 	case 2:
-		return instance.dbloop(k8sdns, tls, interval)
+		return instance.dbloop(kubernetesdns, tls, interval)
 	case 3:
 		return instance.rpcloop(interval)
 	case 4:
-		return instance.webloop(k8sdns, tls, interval)
+		return instance.webloop(kubernetesdns, tls, interval)
 	}
 	return nil
 }
-func (s *sdk) dbloop(k8sdns, tls bool, interval time.Duration) error {
+func (s *sdk) dbloop(kubernetesdns, tls bool, interval time.Duration) error {
 	var c api.SconfigWebClient
 	var e error
-	if !k8sdns {
+	if !kubernetesdns {
 		c, e = api.NewSconfigWebClient(nil, s.selfgroup, s.selfname)
 		if e != nil {
 			return e
@@ -78,9 +78,9 @@ func (s *sdk) dbloop(k8sdns, tls bool, interval time.Duration) error {
 		discover := func(group, name string, client *web.WebClient) {
 			all := make(map[string][]string)
 			if tls {
-				all["https://config.default"] = []string{"k8sdns"}
+				all["https://config.default"] = []string{"kubernetesdns"}
 			} else {
-				all["http://config.default"] = []string{"k8sdns"}
+				all["http://config.default"] = []string{"kubernetesdns"}
 			}
 			client.UpdateDiscovery(all, nil)
 		}
@@ -230,10 +230,10 @@ func (s *sdk) rpcloop(interval time.Duration) error {
 	}()
 	return nil
 }
-func (s *sdk) webloop(k8sdns, tls bool, interval time.Duration) error {
+func (s *sdk) webloop(kubernetesdns, tls bool, interval time.Duration) error {
 	var c api.SconfigWebClient
 	var e error
-	if !k8sdns {
+	if !kubernetesdns {
 		c, e = api.NewSconfigWebClient(nil, s.selfgroup, s.selfname)
 		if e != nil {
 			return e
@@ -242,9 +242,9 @@ func (s *sdk) webloop(k8sdns, tls bool, interval time.Duration) error {
 		discover := func(group, name string, client *web.WebClient) {
 			all := make(map[string][]string)
 			if tls {
-				all["https://config.default"] = []string{"k8sdns"}
+				all["https://config.default"] = []string{"kubernetesdns"}
 			} else {
-				all["http://config.default"] = []string{"k8sdns"}
+				all["http://config.default"] = []string{"kubernetesdns"}
 			}
 			client.UpdateDiscovery(all, nil)
 		}
@@ -301,10 +301,10 @@ func (s *sdk) webloop(k8sdns, tls bool, interval time.Duration) error {
 	}()
 	return nil
 }
-func (s *sdk) watch(k8sdns, tls bool) error {
+func (s *sdk) watch(kubernetesdns, tls bool) error {
 	var c api.SconfigWebClient
 	var e error
-	if !k8sdns {
+	if !kubernetesdns {
 		c, e = api.NewSconfigWebClient(nil, s.selfgroup, s.selfname)
 		if e != nil {
 			return e
@@ -313,9 +313,9 @@ func (s *sdk) watch(k8sdns, tls bool) error {
 		discover := func(group, name string, client *web.WebClient) {
 			all := make(map[string][]string)
 			if tls {
-				all["https://config.default"] = []string{"k8sdns"}
+				all["https://config.default"] = []string{"kubernetesdns"}
 			} else {
-				all["http://config.default"] = []string{"k8sdns"}
+				all["http://config.default"] = []string{"kubernetesdns"}
 			}
 			client.UpdateDiscovery(all, nil)
 		}
