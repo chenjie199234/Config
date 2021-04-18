@@ -3,7 +3,7 @@ syntax="proto3";
 //this is the proto package name,all proto in this project must use this name as the proto package name
 package config;
 //this is the golang's package name,all proto in this project must use this name as the golang's package name
-option go_package="config/api;api";
+option go_package="Config/api;api";
 
 //this is the proto file for sconfig service
 service sconfig{

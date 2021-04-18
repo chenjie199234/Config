@@ -8,6 +8,7 @@ import (
 	"github.com/chenjie199234/Config/config"
 	"github.com/chenjie199234/Corelib/rpc"
 	"github.com/chenjie199234/Corelib/web"
+	"github.com/chenjie199234/Discovery/sdk"
 )
 
 //var ExampleRpcApi example.ExampleRpcClient
@@ -53,6 +54,7 @@ func getRpcClientConfig() *rpc.ClientConfig {
 		MaxMsgLen:              65535,
 		MaxBufferedWriteMsgNum: 256,
 		VerifyData:             rpcverifydata,
+		Discover:               sdk.DefaultRpcDiscover,
 	}
 }
 func getWebClientConfig() *web.ClientConfig {
@@ -66,5 +68,6 @@ func getWebClientConfig() *web.ClientConfig {
 		SocketWBuf:    1024,
 		SkipVerifyTLS: wc.SkipVerifyTls,
 		CAs:           wc.Cas,
+		Discover:      sdk.DefaultWebDiscover,
 	}
 }
