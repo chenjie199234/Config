@@ -117,9 +117,9 @@ if "%1" == "new" (
 )
 
 :pb
-	protoc --go_out=../ ./api/*.proto
-	protoc --go-grpc_out=require_unimplemented_servers=false:../ ./api/*.proto
-	protoc --go-gin_out=../ ./api/*.proto
+	protoc --go_out=paths=source_relative:. ./api/*.proto
+	protoc --go-rpc_out=paths=source_relative:. ./api/*.proto
+	protoc --go-web_out=paths=source_relative:. ./api/*.proto
 	go mod tidy
 goto :end
 

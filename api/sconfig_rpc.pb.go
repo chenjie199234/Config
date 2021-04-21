@@ -7,7 +7,7 @@ import (
 	rpc "github.com/chenjie199234/Corelib/rpc"
 	error1 "github.com/chenjie199234/Corelib/util/error"
 	metadata "github.com/chenjie199234/Corelib/util/metadata"
-	proto "github.com/golang/protobuf/proto"
+	proto "google.golang.org/protobuf/proto"
 )
 
 var RpcPathSconfigSinfo = "/config.Sconfig/Sinfo"

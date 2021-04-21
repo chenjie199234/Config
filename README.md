@@ -1,6 +1,6 @@
 # config
 ```
-config是一个微服务.
+config是一个配置中心服务
 运行cmd脚本可查看使用方法.windows下将./cmd.sh换为cmd.bat
 ./cmd.sh pb 解析proto文件,生成打桩代码
 ./cmd.sh run 运行该程序
