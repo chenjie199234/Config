@@ -23,11 +23,14 @@ type Config struct {
 func (d *Dao) MongoGetInfo(ctx context.Context, groupname, appname string, op_num int64) (*Summary, *Config, error) {
 	summary := &Summary{}
 	if e := d.mongo.Database("s_"+groupname).Collection(appname).FindOne(ctx, bson.M{"_id": 0}).Decode(summary); e != nil {
+		if e == mongo.ErrNoDocuments {
+			return nil, nil, nil
+		}
 		return nil, nil, e
 	}
 	//version check:didn't change
-	if summary.OpNum == op_num && op_num != 0 {
-		return nil, nil, nil
+	if summary.OpNum == op_num {
+		return summary, nil, nil
 	}
 	config := &Config{}
 	if e := d.mongo.Database("s_"+groupname).Collection(appname).FindOne(ctx, bson.M{"_id": summary.CurId}).Decode(config); e != nil {
@@ -48,42 +51,35 @@ func (d *Dao) MongoGetConfig(ctx context.Context, groupname, appname, id string)
 	return config, nil
 }
 
-func (d *Dao) MongoSetConfig(ctx context.Context, groupname, appname, appconfig, sourceconfig string) error {
-	s, e := d.mongo.StartSession()
-	if e != nil {
-		return e
+func (d *Dao) MongoSetConfig(ctx context.Context, groupname, appname, appconfig, sourceconfig string) (e error) {
+	var s mongo.Session
+	if s, e = d.mongo.StartSession(); e != nil {
+		return
 	}
-	defer s.EndSession(ctx)
-	if e = d.mongo.UseSession(ctx, func(sctx mongo.SessionContext) (e error) {
-		sctx.StartTransaction()
-		defer func() {
-			if e != nil {
-				sctx.AbortTransaction(sctx)
-			} else if ee := sctx.CommitTransaction(sctx); ee != nil {
-				e = ee
-			}
-		}()
-		var r *mongo.InsertOneResult
-		col := sctx.Client().Database("s_" + groupname).Collection(appname)
-		r, e = col.InsertOne(sctx, bson.M{"app_config": appconfig, "source_config": sourceconfig})
-		if e != nil {
-			return e
-		}
-		filter := bson.M{"_id": 0}
-		update := bson.M{
-			"$set":  bson.M{"_id": 0, "cur_id": r.InsertedID},
-			"$push": bson.M{"all_ids": r.InsertedID},
-			"$inc":  bson.M{"op_num": 1},
-		}
-		_, e = col.UpdateOne(sctx, filter, update, options.Update().SetUpsert(true))
-		if e != nil {
-			return e
-		}
-		return nil
-	}); e != nil {
-		return e
+	sctx := mongo.NewSessionContext(ctx, s)
+	defer s.EndSession(sctx)
+	if e = s.StartTransaction(); e != nil {
+		return
 	}
-	return nil
+	defer func() {
+		if e != nil {
+			s.AbortTransaction(sctx)
+		} else if e = s.CommitTransaction(sctx); e != nil {
+			s.AbortTransaction(sctx)
+		}
+	}()
+	var r *mongo.InsertOneResult
+	if r, e = d.mongo.Database("s_"+groupname).Collection(appname).InsertOne(sctx, bson.M{"app_config": appconfig, "source_config": sourceconfig}); e != nil {
+		return
+	}
+	filter := bson.M{"_id": 0}
+	update := bson.M{
+		"$set":  bson.M{"_id": 0, "cur_id": r.InsertedID},
+		"$push": bson.M{"all_ids": r.InsertedID},
+		"$inc":  bson.M{"op_num": 1},
+	}
+	_, e = d.mongo.Database("s_"+groupname).Collection(appname).UpdateOne(sctx, filter, update, options.Update().SetUpsert(true))
+	return
 }
 
 func (d *Dao) MongoRollbackConfig(ctx context.Context, groupname, appname, id string) error {
@@ -151,12 +147,13 @@ func (d *Dao) MongoWatch(groupname, appname string, update func(int64, *Config))
 	}
 	defer c.Close(context.Background())
 	summary, config, e := d.MongoGetInfo(context.Background(), groupname, appname, 0)
-	if e == nil {
-		update(summary.OpNum, config)
-	} else if e == mongo.ErrNoDocuments {
+	if e != nil {
+		return e
+	}
+	if summary == nil || config == nil {
 		update(0, nil)
 	} else {
-		return e
+		update(summary.OpNum, config)
 	}
 	for c.Next(context.Background()) {
 		var curid primitive.ObjectID

@@ -15,6 +15,7 @@ import (
 	"github.com/chenjie199234/Corelib/rpc"
 	"github.com/chenjie199234/Corelib/util/common"
 	"github.com/chenjie199234/Corelib/web"
+	discoverysdk "github.com/chenjie199234/Discovery/sdk"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readconcern"
@@ -22,385 +23,331 @@ import (
 )
 
 type sdk struct {
-	path      string
-	selfgroup string
-	selfname  string
-	opnum     int64
+	path  string
+	opnum int64
 }
 
 var instance *sdk
 
-//sdktype:
-//1-watch,get db addr from config server through web protocol(kubernetesdns or self's discovry),watch self's config change by watch the db
-//2-dbloop,get db addr from config server through web protocol(kubernetesdns or self's discovry),loop get self's config form db
-//3-rpcloop,loop get self's config by call config server through rpc protocol(self's discovry),config server will get data from db and return back
-//4-webloop,loop get self's config by call config server through web protocol(kubernetesdns or self's discovry),config server will get data from db and return back
-//kubernetesdns:
-//when sdktype is 1,2,4 sdk will call config server through web protocol
-//if kubernetesdns is true,the call will use k8s's dns
-//if kubernetesdns is false,the call will use self's discovry
-//tls:
-//when sdktype is 1,2,4 sdk will call config server through web protocol,does this need tls
-func NewServerSdk(sdktype int, kubernetesdns, tls bool, interval time.Duration, path string, selfgroup, selfname string) error {
-	if sdktype != 1 && sdktype != 2 && sdktype != 3 && sdktype != 4 {
-		return errors.New("[config.sdk] unknown sdk type")
-	}
+func NewWebSdk(path, selfgroup, selfname string, watch bool, loopInterval time.Duration, webc *web.ClientConfig) error {
 	if !atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&instance)), nil, unsafe.Pointer(&sdk{
 		path:  path,
 		opnum: 0,
 	})) {
 		return nil
 	}
-	if interval == 0 {
-		interval = time.Second
-	}
-	switch sdktype {
-	case 1:
-		return instance.watch(kubernetesdns, tls)
-	case 2:
-		return instance.dbloop(kubernetesdns, tls, interval)
-	case 3:
-		return instance.rpcloop(interval)
-	case 4:
-		return instance.webloop(kubernetesdns, tls, interval)
-	}
-	return nil
-}
-func (s *sdk) dbloop(kubernetesdns, tls bool, interval time.Duration) error {
-	var c api.SconfigWebClient
-	var e error
-	if !kubernetesdns {
-		c, e = api.NewSconfigWebClient(nil, s.selfgroup, s.selfname)
-		if e != nil {
-			return e
-		}
-	} else {
-		discover := func(group, name string, client *web.WebClient) {
-			all := make(map[string][]string)
-			if tls {
-				all["https://config.default"] = []string{"kubernetesdns"}
-			} else {
-				all["http://config.default"] = []string{"kubernetesdns"}
-			}
-			client.UpdateDiscovery(all, nil)
-		}
-		c, e = api.NewSconfigWebClient(&web.ClientConfig{Discover: discover}, s.selfgroup, s.selfname)
-		if e != nil {
-			return e
+	if webc == nil {
+		webc = &web.ClientConfig{
+			Discover: discoverysdk.DefaultWebDiscover,
 		}
 	}
-	//init
-	var resp *api.Sgetwatchaddrresp
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Second))
-	defer cancel()
-	for {
-		//discovry and connect may take some time
-		//loop and sleep to wait it finish
-		time.Sleep(time.Millisecond * 50)
-		resp, e = c.Sgetwatchaddr(ctx, &api.Sgetwatchaddrreq{})
-		if e != nil {
-			log.Error("[config.sdk.dbloop.init] call config server error:", e)
-			if e == context.DeadlineExceeded || e == context.Canceled {
-				return errors.New("[config.sdk.dbloop.init] call config server failed")
-			}
-			continue
-		}
-		break
-	}
-	if resp.Username == "" || resp.Passwd == "" || len(resp.Addrs) == 0 || resp.ReplicaSetName == "" {
-		return errors.New("[config.sdk.dbloop.init] doesn't support")
-	}
-	op := &options.ClientOptions{}
-	op = op.SetAuth(options.Credential{Username: resp.Username, Password: resp.Passwd})
-	op.SetReplicaSet(resp.ReplicaSetName)
-	op = op.SetHosts(resp.Addrs)
-	op = op.SetConnectTimeout(time.Second)
-	op = op.SetCompressors([]string{"zstd"}).SetZstdLevel(3)
-	op = op.SetMaxConnIdleTime(time.Minute)
-	op = op.SetMaxPoolSize(5)
-	op = op.SetSocketTimeout(time.Second)
-	op = op.SetHeartbeatInterval(time.Second * 5)
-	//default:secondary is preferred to be selected,if there is no secondary,primary will be selected
-	op = op.SetReadPreference(readpref.SecondaryPreferred())
-	//watch must set readconcern to majority
-	op = op.SetReadConcern(readconcern.Majority())
-	db, e := mongo.Connect(nil, op)
+	client, e := api.NewSconfigWebClient(webc, selfgroup, selfname)
 	if e != nil {
-		return errors.New("[config.sdk.dbloop.init] create mongodb client error:" + e.Error())
-	}
-	dao := sconfig.NewDao(nil, nil, db)
-	summary, config, e := dao.MongoGetInfo(ctx, s.selfgroup, s.selfname, 0)
-	if e == nil {
-		if e := s.updateAppConfig(config.AppConfig); e != nil {
-			return errors.New("[config.sdk.dbloop.init] write appconfig file error:" + e.Error())
-		}
-		if e := s.updateSourceConfig(config.SourceConfig); e != nil {
-			return errors.New("[config.sdk.dbloop.init] write sourceconfig file error:" + e.Error())
-		}
-		s.opnum = summary.OpNum
-	} else if e == mongo.ErrNoDocuments {
-		if e := s.updateAppConfig("{}"); e != nil {
-			return errors.New("[config.sdk.dbloop.init] write appconfig file error:" + e.Error())
-		}
-		if e := s.updateSourceConfig("{}"); e != nil {
-			return errors.New("[config.sdk.dbloop.init] write sourceconfig file error:" + e.Error())
-		}
-		s.opnum = 0
-	} else {
+		log.Error("[config.sdk] new config client error:", e)
 		return e
 	}
-	//init success
-	//start hot update
-	go func() {
-		tker := time.NewTicker(interval)
-		for {
-			<-tker.C
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-			summary, config, e := dao.MongoGetInfo(ctx, s.selfgroup, s.selfname, s.opnum)
-			if e == nil {
-				if e := s.updateAppConfig(config.AppConfig); e == nil {
-					s.opnum = summary.OpNum
-				} else {
-					log.Error("[config.sdk.dbloop] hot update error:", e)
-				}
-			} else if e == mongo.ErrNoDocuments {
-				if e = s.updateAppConfig("{}"); e == nil {
-					s.opnum = 0
-				} else {
-					log.Error("[config.sdk.dbloop] hot update error:", e)
-				}
-			} else {
-				log.Error("[config.sdk.dbloop] get data from mongodb error:", e)
-			}
-			cancel()
-		}
-	}()
-	return nil
-}
-func (s *sdk) rpcloop(interval time.Duration) error {
-	c, e := api.NewSconfigRpcClient(nil, s.selfgroup, s.selfname)
-	if e != nil {
-		return e
-	}
-	//init
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Second))
 	defer cancel()
-	for {
-		//discovry and connect may take some time
-		//loop and sleep to wait it finish
-		time.Sleep(time.Millisecond * 50)
-		resp, e := c.Sinfo(ctx, &api.Sinforeq{Groupname: s.selfgroup, Appname: s.selfname, OpNum: s.opnum})
-		if e != nil {
-			log.Error("[config.sdk.rpcloop.init] call config server error:", e)
-			if e == rpc.ERRCTXTIMEOUT || e == rpc.ERRCTXCANCEL {
-				return errors.New("[config.sdk.rpcloop.init] call config server failed")
-			}
-			continue
-		}
-		if e := s.updateAppConfig(resp.CurAppConfig); e != nil {
-			return errors.New("[config.sdk.rpcloop.init] write appconfig file error:" + e.Error())
-		}
-		if e := s.updateSourceConfig(resp.CurSourceConfig); e != nil {
-			return errors.New("[config.sdk.rpcloop.init] write sourceconfig file error:" + e.Error())
-		}
-		s.opnum = resp.OpNum
-		break
-	}
-	//init success
-	//start hot update
-	go func() {
-		tker := time.NewTicker(interval)
+	if watch {
+		var resp *api.Sgetwatchaddrresp
 		for {
-			<-tker.C
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-			//background context will use the client's timeout
-			resp, e := c.Sinfo(ctx, &api.Sinforeq{Groupname: s.selfgroup, Appname: s.selfname, OpNum: s.opnum})
+			//wait for discovery
+			time.Sleep(time.Millisecond * 50)
+			resp, e = client.Sgetwatchaddr(ctx, &api.Sgetwatchaddrreq{})
 			if e != nil {
-				log.Error("[config.sdk.rpcloop] call config server error:", e)
-			} else if resp.OpNum != s.opnum {
-				//only appconfig can be hot updated
-				if e := s.updateAppConfig(resp.CurAppConfig); e == nil {
-					s.opnum = resp.OpNum
-				} else {
-					log.Error("[config.sdk.rpcloop] hot update error:", e)
+				log.Error("[config.sdk] call config server for watch addr error:", e)
+				if e == context.DeadlineExceeded || e == context.Canceled {
+					return errors.New("[config.sdk] call config server for watch addr failed")
 				}
+				continue
 			}
-			cancel()
+			break
 		}
-	}()
-	return nil
-}
-func (s *sdk) webloop(kubernetesdns, tls bool, interval time.Duration) error {
-	var c api.SconfigWebClient
-	var e error
-	if !kubernetesdns {
-		c, e = api.NewSconfigWebClient(nil, s.selfgroup, s.selfname)
-		if e != nil {
-			return e
-		}
-	} else {
-		discover := func(group, name string, client *web.WebClient) {
-			all := make(map[string][]string)
-			if tls {
-				all["https://config.default"] = []string{"kubernetesdns"}
-			} else {
-				all["http://config.default"] = []string{"kubernetesdns"}
-			}
-			client.UpdateDiscovery(all, nil)
-		}
-		c, e = api.NewSconfigWebClient(&web.ClientConfig{Discover: discover}, s.selfgroup, s.selfname)
-		if e != nil {
-			return e
-		}
-	}
-	//init
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Second))
-	defer cancel()
-	for {
-		//discovry and connect may take some time
-		//loop and sleep to wait it finish
-		time.Sleep(time.Millisecond * 50)
-		resp, e := c.Sinfo(ctx, &api.Sinforeq{Groupname: s.selfgroup, Appname: s.selfname, OpNum: s.opnum})
-		if e != nil {
-			log.Error("[config.sdk.webloop.init] call config server error:", e)
-			if e == context.DeadlineExceeded || e == context.Canceled {
-				return errors.New("[config.sdk.webloop.init] call config server failed")
-			}
-			continue
-		}
-		if e := s.updateAppConfig(resp.CurAppConfig); e != nil {
-			return errors.New("[config.sdk.webloop.init] write appconfig file error:" + e.Error())
-		}
-		if e := s.updateSourceConfig(resp.CurSourceConfig); e != nil {
-			return errors.New("[config.sdk.webloop.init] write sourceconfig file error:" + e.Error())
-		}
-		s.opnum = resp.OpNum
-		break
-	}
-	//init success
-	//start hot update
-	go func() {
-		tker := time.NewTicker(interval)
-		for {
-			<-tker.C
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-			//background context will use the client's timeout
-			resp, e := c.Sinfo(ctx, &api.Sinforeq{Groupname: s.selfgroup, Appname: s.selfname, OpNum: s.opnum})
-			if e != nil {
-				log.Error("[config.sdk.webloop] call config server error:", e)
-			} else if resp.OpNum != s.opnum {
-				//only appconfig can be hot updated
-				if e := s.updateAppConfig(resp.CurAppConfig); e == nil {
-					s.opnum = resp.OpNum
-				} else {
-					log.Error("[config.sdk.webloop] hot update error:", e)
-				}
-			}
-			cancel()
-		}
-	}()
-	return nil
-}
-func (s *sdk) watch(kubernetesdns, tls bool) error {
-	var c api.SconfigWebClient
-	var e error
-	if !kubernetesdns {
-		c, e = api.NewSconfigWebClient(nil, s.selfgroup, s.selfname)
-		if e != nil {
-			return e
-		}
-	} else {
-		discover := func(group, name string, client *web.WebClient) {
-			all := make(map[string][]string)
-			if tls {
-				all["https://config.default"] = []string{"kubernetesdns"}
-			} else {
-				all["http://config.default"] = []string{"kubernetesdns"}
-			}
-			client.UpdateDiscovery(all, nil)
-		}
-		c, e = api.NewSconfigWebClient(&web.ClientConfig{Discover: discover}, s.selfgroup, s.selfname)
-		if e != nil {
-			return e
-		}
-	}
-	//init
-	var resp *api.Sgetwatchaddrresp
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Second))
-	defer cancel()
-	for {
-		//discovry and connect may take some time
-		//loop and sleep to wait it finish
-		time.Sleep(time.Millisecond * 50)
-		resp, e = c.Sgetwatchaddr(ctx, &api.Sgetwatchaddrreq{})
-		if e != nil {
-			log.Error("[config.sdk.watch.init] call config server error:", e)
-			if e == context.DeadlineExceeded || e == context.Canceled {
-				return errors.New("[config.sdk.watch.init] call config server failed")
-			}
-			continue
-		}
-		break
-	}
-	if resp.Username == "" || resp.Passwd == "" || len(resp.Addrs) == 0 || resp.ReplicaSetName == "" {
-		return errors.New("[config.sdk.watch.init] doesn't support")
-	}
-	op := &options.ClientOptions{}
-	op = op.SetAuth(options.Credential{Username: resp.Username, Password: resp.Passwd})
-	op.SetReplicaSet(resp.ReplicaSetName)
-	op = op.SetHosts(resp.Addrs)
-	op = op.SetConnectTimeout(time.Second)
-	op = op.SetCompressors([]string{"zstd"}).SetZstdLevel(3)
-	op = op.SetMaxConnIdleTime(time.Minute)
-	op = op.SetMaxPoolSize(5)
-	op = op.SetSocketTimeout(time.Second)
-	op = op.SetHeartbeatInterval(time.Second * 5)
-	//default:secondary is preferred to be selected,if there is no secondary,primary will be selected
-	op = op.SetReadPreference(readpref.SecondaryPreferred())
-	//watch must set readconcern to majority
-	op = op.SetReadConcern(readconcern.Majority())
-	db, e := mongo.Connect(nil, op)
-	if e != nil {
-		return errors.New("[config.sdk.watch.init] create mongodb client error:" + e.Error())
-	}
-	dao := sconfig.NewDao(nil, nil, db)
-	initch := make(chan struct{}, 1)
-	//init success
-	//start hot update
-	go func() {
-		for {
-			if e := dao.MongoWatch(s.selfgroup, s.selfname, func(opnum int64, config *sconfig.Config) {
-				select {
-				case initch <- struct{}{}:
-				default:
-				}
-				if opnum == s.opnum {
-					return
-				}
-				if opnum == 0 || config == nil {
-					if e := s.updateAppConfig("{}"); e == nil {
-						s.opnum = opnum
-					} else {
-						log.Error("[config.sdk.watch] hot update error:", e)
+		if len(resp.Addrs) == 0 {
+			log.Warning("[config.sdk] init watch error: config server doesn't support watch")
+			log.Warning("[config.sdk] fallback to loop")
+		} else if db, e := newmongo(resp.Username, resp.Passwd, resp.ReplicaSetName, resp.Addrs); e != nil {
+			log.Warning("[config.sdk] init watch error:", e)
+			log.Warning("[config.sdk] fallback to loop")
+		} else {
+			//run watch logic
+			dao := sconfig.NewDao(nil, nil, db)
+			for {
+				sum, conf, e := dao.MongoGetInfo(ctx, selfgroup, selfname, 0)
+				if e != nil {
+					log.Error("[config.sdk] get config data from db error:", e)
+					if e == context.DeadlineExceeded || e == context.Canceled {
+						return errors.New("[config.sdk] get config data from db failed")
 					}
-				} else if e := s.updateAppConfig(config.AppConfig); e != nil {
-					//only appconfig can be hot updated
-					s.opnum = opnum
-				} else {
-					log.Error("[config.sdk.watch] hot update error:", e)
+					time.Sleep(time.Millisecond * 50)
+					continue
 				}
-			}); e != nil {
-				log.Error("[config.sdk.watch] watch mongodb error:", e)
+				appc := ""
+				sourcec := ""
+				if sum == nil || conf == nil {
+					instance.opnum = 0
+				} else {
+					instance.opnum = sum.OpNum
+					appc = conf.AppConfig
+					sourcec = conf.SourceConfig
+				}
+				if e := instance.updateAppConfig(appc); e != nil {
+					return errors.New("[config.sdk] write appconfig file error:" + e.Error())
+				}
+				if e := instance.updateSourceConfig(sourcec); e != nil {
+					return errors.New("[config.sdk] write sourceconfig file error:" + e.Error())
+				}
+				break
+			}
+			go func() {
+				for {
+					if e := dao.MongoWatch(selfgroup, selfname, func(opnum int64, config *sconfig.Config) {
+						if opnum != instance.opnum {
+							//only appconfig can be hot updated
+							var e error
+							if config == nil {
+								e = instance.updateAppConfig("")
+							} else {
+								e = instance.updateAppConfig(config.AppConfig)
+							}
+							if e != nil {
+								log.Error("[config.sdk] hot update write appconfig file error:", e)
+							} else {
+								instance.opnum = opnum
+							}
+						}
+					}); e != nil {
+						log.Error("[config.sdk.watch] watch mongodb error:", e)
+						time.Sleep(time.Second)
+					}
+				}
+			}()
+			return nil
+		}
+	}
+	//run loop logic
+	for {
+		//wait for discovery
+		time.Sleep(time.Millisecond * 50)
+		resp, e := client.Sinfo(ctx, &api.Sinforeq{Groupname: selfgroup, Appname: selfname, OpNum: instance.opnum})
+		if e != nil {
+			log.Error("[config.sdk] call config server for config data error:", e)
+			if e == context.DeadlineExceeded || e == context.Canceled {
+				return errors.New("[config.sdk] call config server for config data failed")
+			}
+			continue
+		}
+		if e := instance.updateAppConfig(resp.CurAppConfig); e != nil {
+			return errors.New("[config.sdk] write appconfig file error:" + e.Error())
+		}
+		if e := instance.updateSourceConfig(resp.CurSourceConfig); e != nil {
+			return errors.New("[config.sdk] write sourceconfig file error:" + e.Error())
+		}
+		instance.opnum = resp.OpNum
+		break
+	}
+	go func() {
+		if loopInterval < time.Second {
+			//too fast
+			//if need fast use watch mode
+			loopInterval = time.Second
+		}
+		tker := time.NewTicker(loopInterval)
+		for {
+			<-tker.C
+			ctx, cancel := context.WithTimeout(context.Background(), loopInterval)
+			resp, e := client.Sinfo(ctx, &api.Sinforeq{Groupname: selfgroup, Appname: selfname, OpNum: instance.opnum})
+			if e != nil {
+				log.Error("[config.sdk] hot update call config server for config data error:", e)
+			} else if resp.OpNum != instance.opnum {
+				//only appconfig can be hot updated
+				if e := instance.updateAppConfig(resp.CurAppConfig); e != nil {
+					log.Error("[config.sdk] hot update write appconfig file error:", e)
+				} else {
+					instance.opnum = resp.OpNum
+				}
+			}
+			cancel()
+			for len(tker.C) > 0 {
+				<-tker.C
 			}
 		}
 	}()
-	select {
-	case <-initch:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	return nil
 }
+func NewRpcSdk(path, selfgroup, selfname string, watch bool, loopInterval time.Duration, rpcc *rpc.ClientConfig) error {
+	if !atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&instance)), nil, unsafe.Pointer(&sdk{
+		path:  path,
+		opnum: 0,
+	})) {
+		return nil
+	}
+	if rpcc == nil {
+		rpcc = &rpc.ClientConfig{
+			Discover: discoverysdk.DefaultRpcDiscover,
+		}
+	}
+	client, e := api.NewSconfigRpcClient(rpcc, selfgroup, selfname)
+	if e != nil {
+		log.Error("[config.sdk] new config client error:", e)
+		return e
+	}
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Second))
+	defer cancel()
+	if watch {
+		var resp *api.Sgetwatchaddrresp
+		for {
+			//wait for discovery
+			time.Sleep(time.Millisecond * 50)
+			resp, e = client.Sgetwatchaddr(ctx, &api.Sgetwatchaddrreq{})
+			if e != nil {
+				log.Error("[config.sdk] call config server for watch addr error:", e)
+				if e == context.DeadlineExceeded || e == context.Canceled {
+					return errors.New("[config.sdk] call config server for watch addr failed")
+				}
+				continue
+			}
+			break
+		}
+		if len(resp.Addrs) == 0 {
+			log.Warning("[config.sdk] init watch error: config server doesn't support watch")
+			log.Warning("[config.sdk] fallback to loop")
+		} else if db, e := newmongo(resp.Username, resp.Passwd, resp.ReplicaSetName, resp.Addrs); e != nil {
+			log.Warning("[config.sdk] init watch error:", e)
+			log.Warning("[config.sdk] fallback to loop")
+		} else {
+			//run watch logic
+			dao := sconfig.NewDao(nil, nil, db)
+			for {
+				sum, conf, e := dao.MongoGetInfo(ctx, selfgroup, selfname, 0)
+				if e != nil {
+					log.Error("[config.sdk] get config data from db error:", e)
+					if e == context.DeadlineExceeded || e == context.Canceled {
+						return errors.New("[config.sdk] get config data from db failed")
+					}
+					time.Sleep(time.Millisecond * 50)
+					continue
+				}
+				appc := ""
+				sourcec := ""
+				if sum == nil || conf == nil {
+					instance.opnum = 0
+				} else {
+					instance.opnum = sum.OpNum
+					appc = conf.AppConfig
+					sourcec = conf.SourceConfig
+				}
+				if e := instance.updateAppConfig(appc); e != nil {
+					return errors.New("[config.sdk] write appconfig file error:" + e.Error())
+				}
+				if e := instance.updateSourceConfig(sourcec); e != nil {
+					return errors.New("[config.sdk] write sourceconfig file error:" + e.Error())
+				}
+				break
+			}
+			go func() {
+				for {
+					if e := dao.MongoWatch(selfgroup, selfname, func(opnum int64, config *sconfig.Config) {
+						if opnum != instance.opnum {
+							//only appconfig can be hot updated
+							var e error
+							if config == nil {
+								e = instance.updateAppConfig("")
+							} else {
+								e = instance.updateAppConfig(config.AppConfig)
+							}
+							if e != nil {
+								log.Error("[config.sdk] hot update write appconfig file error:", e)
+							} else {
+								instance.opnum = opnum
+							}
+						}
+					}); e != nil {
+						log.Error("[config.sdk.watch] watch mongodb error:", e)
+						time.Sleep(time.Second)
+					}
+				}
+			}()
+			return nil
+		}
+	}
+	//run loop logic
+	for {
+		//wait for discovery
+		resp, e := client.Sinfo(ctx, &api.Sinforeq{Groupname: selfgroup, Appname: selfname, OpNum: instance.opnum})
+		if e != nil {
+			log.Error("[config.sdk] call config server for config data error:", e)
+			if e == context.DeadlineExceeded || e == context.Canceled {
+				return errors.New("[config.sdk] call config server for config data failed")
+			}
+			time.Sleep(time.Millisecond * 50)
+			continue
+		}
+		if e := instance.updateAppConfig(resp.CurAppConfig); e != nil {
+			return errors.New("[config.sdk] write appconfig file error:" + e.Error())
+		}
+		if e := instance.updateSourceConfig(resp.CurSourceConfig); e != nil {
+			return errors.New("[config.sdk] write sourceconfig file error:" + e.Error())
+		}
+		instance.opnum = resp.OpNum
+		break
+	}
+	go func() {
+		if loopInterval < time.Second {
+			//too fast
+			//if need fast use watch mode
+			loopInterval = time.Second
+		}
+		tker := time.NewTicker(loopInterval)
+		for {
+			<-tker.C
+			ctx, cancel := context.WithTimeout(context.Background(), loopInterval)
+			resp, e := client.Sinfo(ctx, &api.Sinforeq{Groupname: selfgroup, Appname: selfname, OpNum: instance.opnum})
+			if e != nil {
+				log.Error("[config.sdk] hot update call config server for config data error:", e)
+			} else if resp.OpNum != instance.opnum {
+				//only appconfig can be hot updated
+				if e := instance.updateAppConfig(resp.CurAppConfig); e != nil {
+					log.Error("[config.sdk] hot update write appconfig file error:", e)
+				} else {
+					instance.opnum = resp.OpNum
+				}
+			}
+			cancel()
+			for len(tker.C) > 0 {
+				<-tker.C
+			}
+		}
+	}()
+	return nil
+}
+
+func newmongo(username, passwd, replicaset string, addrs []string) (*mongo.Client, error) {
+	op := &options.ClientOptions{}
+	if username != "" && passwd != "" {
+		op = op.SetAuth(options.Credential{Username: username, Password: passwd})
+	}
+	if replicaset != "" {
+		op.SetReplicaSet(replicaset)
+	}
+	op = op.SetHosts(addrs)
+	op = op.SetConnectTimeout(time.Second)
+	op = op.SetCompressors([]string{"zstd"}).SetZstdLevel(3)
+	op = op.SetMaxConnIdleTime(time.Minute)
+	op = op.SetMaxPoolSize(5)
+	op = op.SetSocketTimeout(time.Second)
+	op = op.SetHeartbeatInterval(time.Second * 5)
+	//default:secondary is preferred to be selected,if there is no secondary,primary will be selected
+	op = op.SetReadPreference(readpref.SecondaryPreferred())
+	//watch must set readconcern to majority
+	op = op.SetReadConcern(readconcern.Majority())
+	db, e := mongo.Connect(nil, op)
+	if e != nil {
+		return nil, e
+	}
+	return db, nil
+}
+
 func (s *sdk) updateAppConfig(appconfig string) error {
 	if appconfig == "" {
 		appconfig = "{}"

@@ -74,11 +74,10 @@ type RpcClientConfig struct {
 
 //WebServerConfig -
 type WebServerConfig struct {
-	GlobalTimeout ctime.Duration    `json:"global_timeout"` //default 500ms
-	IdleTimeout   ctime.Duration    `json:"idle_timeout"`   //default 5s
-	HeartProbe    ctime.Duration    `json:"heart_probe"`    //default 1.5s
-	StaticFile    string            `json:"static_file"`
-	CertKey       map[string]string `json:"cert_key"`
+	GlobalTimeout ctime.Duration `json:"global_timeout"` //default 500ms
+	IdleTimeout   ctime.Duration `json:"idle_timeout"`   //default 5s
+	HeartProbe    ctime.Duration `json:"heart_probe"`    //default 1.5s
+	StaticFile    string         `json:"static_file"`
 	//cors
 	Cors *WebCorsConfig `json:"cors"`
 }
@@ -351,9 +350,6 @@ func initsource(path string) {
 		}
 		if sc.WebServer.HeartProbe <= 0 {
 			sc.WebServer.HeartProbe = ctime.Duration(time.Millisecond * 1500)
-		}
-		if len(sc.WebServer.CertKey) != 0 {
-			delete(sc.WebServer.CertKey, "path_to_example_cert")
 		}
 		if sc.WebServer.Cors == nil {
 			sc.WebServer.Cors = &WebCorsConfig{

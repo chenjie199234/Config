@@ -30,16 +30,16 @@ func (s *Service) Sinfo(ctx context.Context, in *api.Sinforeq) (*api.Sinforesp, 
 	sum, conf, e := s.sconfigDao.MongoGetInfo(ctx, in.Groupname, in.Appname, in.OpNum)
 	if e != nil {
 		log.Error("[sconfig.Info] error:", e)
-		if e == mongo.ErrNoDocuments {
-			return &api.Sinforesp{}, nil
-		}
 		return nil, e
 	}
-	if sum == nil && conf == nil {
+	if sum == nil {
+		//not exist
+		return &api.Sinforesp{}, nil
+	} else if conf == nil {
 		//nothing changed
 		return &api.Sinforesp{OpNum: in.OpNum}, nil
 	}
-	temp := make([]string, 0, len(sum.AllIds)+1)
+	temp := make([]string, 0, len(sum.AllIds))
 	for _, v := range sum.AllIds {
 		temp = append(temp, v.Hex())
 	}
