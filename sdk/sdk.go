@@ -29,16 +29,21 @@ type sdk struct {
 
 var instance *sdk
 
-func NewWebSdk(path, selfgroup, selfname string, watch bool, loopInterval time.Duration, webc *web.ClientConfig) error {
+func NewWebSdk(path, selfgroup, selfname string, watch bool, loopInterval time.Duration, kubernetesdns bool) error {
 	if !atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&instance)), nil, unsafe.Pointer(&sdk{
 		path:  path,
 		opnum: 0,
 	})) {
 		return nil
 	}
-	if webc == nil {
-		webc = &web.ClientConfig{
-			Discover: discoverysdk.DefaultWebDiscover,
+	webc := &web.ClientConfig{
+		Discover: discoverysdk.DefaultWebDiscover,
+	}
+	if kubernetesdns {
+		webc.Discover = func(group, name string, client *web.WebClient) {
+			serveraddr := make(map[string][]string)
+			serveraddr[name+"-service."+group] = []string{"kubernetesdns"}
+			client.UpdateDiscovery(serveraddr, nil)
 		}
 	}
 	client, e := api.NewSconfigWebClient(webc, selfgroup, selfname)
@@ -175,17 +180,15 @@ func NewWebSdk(path, selfgroup, selfname string, watch bool, loopInterval time.D
 	}()
 	return nil
 }
-func NewRpcSdk(path, selfgroup, selfname string, watch bool, loopInterval time.Duration, rpcc *rpc.ClientConfig) error {
+func NewRpcSdk(path, selfgroup, selfname string, watch bool, loopInterval time.Duration) error {
 	if !atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&instance)), nil, unsafe.Pointer(&sdk{
 		path:  path,
 		opnum: 0,
 	})) {
 		return nil
 	}
-	if rpcc == nil {
-		rpcc = &rpc.ClientConfig{
-			Discover: discoverysdk.DefaultRpcDiscover,
-		}
+	rpcc := &rpc.ClientConfig{
+		Discover: discoverysdk.DefaultRpcDiscover,
 	}
 	client, e := api.NewSconfigRpcClient(rpcc, selfgroup, selfname)
 	if e != nil {
