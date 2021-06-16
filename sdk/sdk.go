@@ -10,7 +10,7 @@ import (
 	"unsafe"
 
 	"github.com/chenjie199234/Config/dao/sconfig"
-	"github.com/chenjie199234/Config/sdk/api"
+	api "github.com/chenjie199234/Config/sdk/deps"
 	"github.com/chenjie199234/Corelib/log"
 	"github.com/chenjie199234/Corelib/rpc"
 	"github.com/chenjie199234/Corelib/util/common"

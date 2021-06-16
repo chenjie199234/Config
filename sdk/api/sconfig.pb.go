@@ -1,1 +1,0 @@
-../../api/sconfig.pb.go
