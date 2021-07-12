@@ -36,6 +36,12 @@ spec:
           env:
             - name: DEPLOY_ENV
               value: kubernetes
+            - name: RUN_ENV
+              value: <RUN_ENV>
+            - name: SERVER_VERIFY_DATA
+              value: <SERVER_VERIFY_DATA>
+            - name: CONFIG_TYPE
+              value: <CONFIG_TYPE>
           livenessProbe:
             exec:
               command:
