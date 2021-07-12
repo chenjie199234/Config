@@ -32,8 +32,8 @@ var instance *sdk
 
 func newWebConfig() *web.ClientConfig {
 	webc := &web.ClientConfig{}
-	webc.Discover = func(group, name string, manually <-chan struct{}, client *web.WebClient) {
-		host := name + "-service-headless." + group
+	webc.Discover = func(_, _ string, manually <-chan struct{}, client *web.WebClient) {
+		host := "config-service-headless.default"
 		dserver := make(map[string]struct{}, 2)
 		dserver["kubernetesdns"] = struct{}{}
 		regdata := &web.RegisterData{
