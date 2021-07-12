@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"os"
+	"sort"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -15,7 +17,6 @@ import (
 	"github.com/chenjie199234/Corelib/rpc"
 	"github.com/chenjie199234/Corelib/util/common"
 	"github.com/chenjie199234/Corelib/web"
-	discoverysdk "github.com/chenjie199234/Discovery/sdk"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readconcern"
@@ -29,26 +30,81 @@ type sdk struct {
 
 var instance *sdk
 
-func NewWebSdk(path, selfgroup, selfname string, watch bool, loopInterval time.Duration, kubernetesdns bool) error {
+func newWebConfig() *web.ClientConfig {
+	webc := &web.ClientConfig{}
+	webc.Discover = func(group, name string, manually <-chan struct{}, client *web.WebClient) {
+		host := name + "-service-headless." + group
+		dserver := make(map[string]struct{}, 2)
+		dserver["kubernetesdns"] = struct{}{}
+		regdata := &web.RegisterData{
+			DServers: dserver,
+			Addition: nil,
+		}
+		current := make([]string, 0)
+		finder := func() {
+			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Second))
+			defer cancel()
+			addrs, e := net.DefaultResolver.LookupHost(ctx, host)
+			if e != nil {
+				log.Error("[Config.websdk] dns resolve host:", host, "error:", e)
+				return
+			}
+			if len(addrs) != 0 {
+				sort.Strings(addrs)
+				for i, addr := range addrs {
+					addrs[i] = addr + ":8000"
+				}
+			} else {
+				log.Warning("[Config.websdk] dns resolve host:", host, "return empty result")
+			}
+			different := false
+			if len(addrs) != len(current) {
+				different = true
+			} else {
+				for i, addr := range addrs {
+					if addr != current[i] {
+						different = true
+						break
+					}
+				}
+			}
+			if different {
+				current = addrs
+				log.Info("[Config.websdk] dns resolve host:", host, "result:", current)
+				all := make(map[string]*web.RegisterData, len(addrs)+2)
+				for _, addr := range addrs {
+					all[addr] = regdata
+				}
+				client.UpdateDiscovery(all)
+			}
+		}
+		finder()
+		tker := time.NewTicker(time.Second * 5)
+		for {
+			select {
+			case <-tker.C:
+				finder()
+			case <-manually:
+				finder()
+				tker.Reset(time.Second * 5)
+				for len(tker.C) > 0 {
+					<-tker.C
+				}
+			}
+		}
+	}
+	return webc
+}
+func NewWebSdk(path, selfgroup, selfname string, watch bool, loopInterval time.Duration) error {
 	if !atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&instance)), nil, unsafe.Pointer(&sdk{
 		path:  path,
 		opnum: 0,
 	})) {
 		return nil
 	}
-	webc := &web.ClientConfig{
-		Discover: discoverysdk.DefaultWebDiscover,
-	}
-	if kubernetesdns {
-		webc.Discover = func(group, name string, client *web.WebClient) {
-			serveraddr := make(map[string][]string)
-			serveraddr[name+"-service."+group] = []string{"kubernetesdns"}
-			client.UpdateDiscovery(serveraddr, nil)
-		}
-	}
-	client, e := api.NewSconfigWebClient(webc, selfgroup, selfname)
+	client, e := api.NewSconfigWebClient(newWebConfig(), selfgroup, selfname)
 	if e != nil {
-		log.Error("[config.sdk] new config client error:", e)
+		log.Error("[Config.websdk] new config client error:", e)
 		return e
 	}
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Second))
@@ -60,29 +116,29 @@ func NewWebSdk(path, selfgroup, selfname string, watch bool, loopInterval time.D
 			time.Sleep(time.Millisecond * 50)
 			resp, e = client.Sgetwatchaddr(ctx, &api.Sgetwatchaddrreq{})
 			if e != nil {
-				log.Error("[config.sdk] call config server for watch addr error:", e)
+				log.Error("[Config.websdk] call config server for watch addr error:", e)
 				if e == context.DeadlineExceeded || e == context.Canceled {
-					return errors.New("[config.sdk] call config server for watch addr failed")
+					return errors.New("[Config.websdk] call config server for watch addr failed")
 				}
 				continue
 			}
 			break
 		}
 		if len(resp.Addrs) == 0 {
-			log.Warning("[config.sdk] init watch error: config server doesn't support watch")
-			log.Warning("[config.sdk] fallback to loop")
+			log.Warning("[Config.websdk] init watch error: config server doesn't support watch")
+			log.Warning("[Config.websdk] fallback to loop")
 		} else if db, e := newmongo(resp.Username, resp.Passwd, resp.ReplicaSetName, resp.Addrs); e != nil {
-			log.Warning("[config.sdk] init watch error:", e)
-			log.Warning("[config.sdk] fallback to loop")
+			log.Warning("[Config.websdk] init watch error:", e)
+			log.Warning("[Config.websdk] fallback to loop")
 		} else {
 			//run watch logic
 			dao := sconfig.NewDao(nil, nil, db)
 			for {
 				sum, conf, e := dao.MongoGetInfo(ctx, selfgroup, selfname, 0)
 				if e != nil {
-					log.Error("[config.sdk] get config data from db error:", e)
+					log.Error("[Config.websdk] get config data from db error:", e)
 					if e == context.DeadlineExceeded || e == context.Canceled {
-						return errors.New("[config.sdk] get config data from db failed")
+						return errors.New("[Config.websdk] get config data from db failed")
 					}
 					time.Sleep(time.Millisecond * 50)
 					continue
@@ -97,10 +153,10 @@ func NewWebSdk(path, selfgroup, selfname string, watch bool, loopInterval time.D
 					sourcec = conf.SourceConfig
 				}
 				if e := instance.updateAppConfig(appc); e != nil {
-					return errors.New("[config.sdk] write appconfig file error:" + e.Error())
+					return errors.New("[Config.websdk] write appconfig file error:" + e.Error())
 				}
 				if e := instance.updateSourceConfig(sourcec); e != nil {
-					return errors.New("[config.sdk] write sourceconfig file error:" + e.Error())
+					return errors.New("[Config.websdk] write sourceconfig file error:" + e.Error())
 				}
 				break
 			}
@@ -116,13 +172,13 @@ func NewWebSdk(path, selfgroup, selfname string, watch bool, loopInterval time.D
 								e = instance.updateAppConfig(config.AppConfig)
 							}
 							if e != nil {
-								log.Error("[config.sdk] hot update write appconfig file error:", e)
+								log.Error("[Config.websdk] hot update write appconfig file error:", e)
 							} else {
 								instance.opnum = opnum
 							}
 						}
 					}); e != nil {
-						log.Error("[config.sdk.watch] watch mongodb error:", e)
+						log.Error("[Config.websdk] watch mongodb error:", e)
 						time.Sleep(time.Second)
 					}
 				}
@@ -136,17 +192,17 @@ func NewWebSdk(path, selfgroup, selfname string, watch bool, loopInterval time.D
 		time.Sleep(time.Millisecond * 50)
 		resp, e := client.Sinfo(ctx, &api.Sinforeq{Groupname: selfgroup, Appname: selfname, OpNum: instance.opnum})
 		if e != nil {
-			log.Error("[config.sdk] call config server for config data error:", e)
+			log.Error("[Config.websdk] call config server for config data error:", e)
 			if e == context.DeadlineExceeded || e == context.Canceled {
-				return errors.New("[config.sdk] call config server for config data failed")
+				return errors.New("[Config.websdk] call config server for config data failed")
 			}
 			continue
 		}
 		if e := instance.updateAppConfig(resp.CurAppConfig); e != nil {
-			return errors.New("[config.sdk] write appconfig file error:" + e.Error())
+			return errors.New("[Config.websdk] write appconfig file error:" + e.Error())
 		}
 		if e := instance.updateSourceConfig(resp.CurSourceConfig); e != nil {
-			return errors.New("[config.sdk] write sourceconfig file error:" + e.Error())
+			return errors.New("[Config.websdk] write sourceconfig file error:" + e.Error())
 		}
 		instance.opnum = resp.OpNum
 		break
@@ -163,11 +219,11 @@ func NewWebSdk(path, selfgroup, selfname string, watch bool, loopInterval time.D
 			ctx, cancel := context.WithTimeout(context.Background(), loopInterval)
 			resp, e := client.Sinfo(ctx, &api.Sinforeq{Groupname: selfgroup, Appname: selfname, OpNum: instance.opnum})
 			if e != nil {
-				log.Error("[config.sdk] hot update call config server for config data error:", e)
+				log.Error("[Config.websdk] hot update call config server for config data error:", e)
 			} else if resp.OpNum != instance.opnum {
 				//only appconfig can be hot updated
 				if e := instance.updateAppConfig(resp.CurAppConfig); e != nil {
-					log.Error("[config.sdk] hot update write appconfig file error:", e)
+					log.Error("[Config.websdk] hot update write appconfig file error:", e)
 				} else {
 					instance.opnum = resp.OpNum
 				}
@@ -180,6 +236,71 @@ func NewWebSdk(path, selfgroup, selfname string, watch bool, loopInterval time.D
 	}()
 	return nil
 }
+func newRpcConfig() *rpc.ClientConfig {
+	rpcc := &rpc.ClientConfig{}
+	rpcc.Discover = func(group, name string, manually <-chan struct{}, client *rpc.RpcClient) {
+		host := name + "-service-headless." + group
+		dserver := make(map[string]struct{}, 2)
+		dserver["kubernetesdns"] = struct{}{}
+		regdata := &rpc.RegisterData{
+			DServers: dserver,
+			Addition: nil,
+		}
+		current := make([]string, 0)
+		finder := func() {
+			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Second))
+			defer cancel()
+			addrs, e := net.DefaultResolver.LookupHost(ctx, host)
+			if e != nil {
+				log.Error("[Config.rpcsdk] dns resolve host:", host, "error:", e)
+				return
+			}
+			if len(addrs) != 0 {
+				sort.Strings(addrs)
+				for i, addr := range addrs {
+					addrs[i] = addr + ":9000"
+				}
+			} else {
+				log.Warning("[Config.rpcsdk] dns resolve host:", host, "return empty result")
+			}
+			different := false
+			if len(addrs) != len(current) {
+				different = true
+			} else {
+				for i, addr := range addrs {
+					if addr != current[i] {
+						different = true
+						break
+					}
+				}
+			}
+			if different {
+				current = addrs
+				log.Info("[Config.rpcsdk] dns resolve host:", host, "result:", current)
+				all := make(map[string]*rpc.RegisterData, len(addrs)+2)
+				for _, addr := range addrs {
+					all[addr] = regdata
+				}
+				client.UpdateDiscovery(all)
+			}
+		}
+		finder()
+		tker := time.NewTicker(time.Second * 5)
+		for {
+			select {
+			case <-tker.C:
+				finder()
+			case <-manually:
+				finder()
+				tker.Reset(time.Second * 5)
+				for len(tker.C) > 0 {
+					<-tker.C
+				}
+			}
+		}
+	}
+	return rpcc
+}
 func NewRpcSdk(path, selfgroup, selfname string, watch bool, loopInterval time.Duration) error {
 	if !atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&instance)), nil, unsafe.Pointer(&sdk{
 		path:  path,
@@ -187,12 +308,9 @@ func NewRpcSdk(path, selfgroup, selfname string, watch bool, loopInterval time.D
 	})) {
 		return nil
 	}
-	rpcc := &rpc.ClientConfig{
-		Discover: discoverysdk.DefaultRpcDiscover,
-	}
-	client, e := api.NewSconfigRpcClient(rpcc, selfgroup, selfname)
+	client, e := api.NewSconfigRpcClient(newRpcConfig(), selfgroup, selfname)
 	if e != nil {
-		log.Error("[config.sdk] new config client error:", e)
+		log.Error("[Config.rpcsdk] new config client error:", e)
 		return e
 	}
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Second))
@@ -204,29 +322,29 @@ func NewRpcSdk(path, selfgroup, selfname string, watch bool, loopInterval time.D
 			time.Sleep(time.Millisecond * 50)
 			resp, e = client.Sgetwatchaddr(ctx, &api.Sgetwatchaddrreq{})
 			if e != nil {
-				log.Error("[config.sdk] call config server for watch addr error:", e)
+				log.Error("[Config.rpcsdk] call config server for watch addr error:", e)
 				if e == context.DeadlineExceeded || e == context.Canceled {
-					return errors.New("[config.sdk] call config server for watch addr failed")
+					return errors.New("[Config.rpcsdk] call config server for watch addr failed")
 				}
 				continue
 			}
 			break
 		}
 		if len(resp.Addrs) == 0 {
-			log.Warning("[config.sdk] init watch error: config server doesn't support watch")
-			log.Warning("[config.sdk] fallback to loop")
+			log.Warning("[Config.rpcsdk] init watch error: config server doesn't support watch")
+			log.Warning("[Config.rpcsdk] fallback to loop")
 		} else if db, e := newmongo(resp.Username, resp.Passwd, resp.ReplicaSetName, resp.Addrs); e != nil {
-			log.Warning("[config.sdk] init watch error:", e)
-			log.Warning("[config.sdk] fallback to loop")
+			log.Warning("[Config.rpcsdk] init watch error:", e)
+			log.Warning("[Config.rpcsdk] fallback to loop")
 		} else {
 			//run watch logic
 			dao := sconfig.NewDao(nil, nil, db)
 			for {
 				sum, conf, e := dao.MongoGetInfo(ctx, selfgroup, selfname, 0)
 				if e != nil {
-					log.Error("[config.sdk] get config data from db error:", e)
+					log.Error("[Config.rpcsdk] get config data from db error:", e)
 					if e == context.DeadlineExceeded || e == context.Canceled {
-						return errors.New("[config.sdk] get config data from db failed")
+						return errors.New("[Config.rpcsdk] get config data from db failed")
 					}
 					time.Sleep(time.Millisecond * 50)
 					continue
@@ -241,10 +359,10 @@ func NewRpcSdk(path, selfgroup, selfname string, watch bool, loopInterval time.D
 					sourcec = conf.SourceConfig
 				}
 				if e := instance.updateAppConfig(appc); e != nil {
-					return errors.New("[config.sdk] write appconfig file error:" + e.Error())
+					return errors.New("[Config.rpcsdk] write appconfig file error:" + e.Error())
 				}
 				if e := instance.updateSourceConfig(sourcec); e != nil {
-					return errors.New("[config.sdk] write sourceconfig file error:" + e.Error())
+					return errors.New("[Config.rpcsdk] write sourceconfig file error:" + e.Error())
 				}
 				break
 			}
@@ -260,13 +378,13 @@ func NewRpcSdk(path, selfgroup, selfname string, watch bool, loopInterval time.D
 								e = instance.updateAppConfig(config.AppConfig)
 							}
 							if e != nil {
-								log.Error("[config.sdk] hot update write appconfig file error:", e)
+								log.Error("[Config.rpcsdk] hot update write appconfig file error:", e)
 							} else {
 								instance.opnum = opnum
 							}
 						}
 					}); e != nil {
-						log.Error("[config.sdk.watch] watch mongodb error:", e)
+						log.Error("[Config.rpcsdk] watch mongodb error:", e)
 						time.Sleep(time.Second)
 					}
 				}
@@ -279,18 +397,18 @@ func NewRpcSdk(path, selfgroup, selfname string, watch bool, loopInterval time.D
 		//wait for discovery
 		resp, e := client.Sinfo(ctx, &api.Sinforeq{Groupname: selfgroup, Appname: selfname, OpNum: instance.opnum})
 		if e != nil {
-			log.Error("[config.sdk] call config server for config data error:", e)
+			log.Error("[Config.rpcsdk] call config server for config data error:", e)
 			if e == context.DeadlineExceeded || e == context.Canceled {
-				return errors.New("[config.sdk] call config server for config data failed")
+				return errors.New("[Config.rpcsdk] call config server for config data failed")
 			}
 			time.Sleep(time.Millisecond * 50)
 			continue
 		}
 		if e := instance.updateAppConfig(resp.CurAppConfig); e != nil {
-			return errors.New("[config.sdk] write appconfig file error:" + e.Error())
+			return errors.New("[Config.rpcsdk] write appconfig file error:" + e.Error())
 		}
 		if e := instance.updateSourceConfig(resp.CurSourceConfig); e != nil {
-			return errors.New("[config.sdk] write sourceconfig file error:" + e.Error())
+			return errors.New("[Config.rpcsdk] write sourceconfig file error:" + e.Error())
 		}
 		instance.opnum = resp.OpNum
 		break
@@ -307,11 +425,11 @@ func NewRpcSdk(path, selfgroup, selfname string, watch bool, loopInterval time.D
 			ctx, cancel := context.WithTimeout(context.Background(), loopInterval)
 			resp, e := client.Sinfo(ctx, &api.Sinforeq{Groupname: selfgroup, Appname: selfname, OpNum: instance.opnum})
 			if e != nil {
-				log.Error("[config.sdk] hot update call config server for config data error:", e)
+				log.Error("[Config.rpcsdk] hot update call config server for config data error:", e)
 			} else if resp.OpNum != instance.opnum {
 				//only appconfig can be hot updated
-				if e := instance.updateAppConfig(resp.CurAppConfig); e != nil {
-					log.Error("[config.sdk] hot update write appconfig file error:", e)
+				if e := instance.updateAppConfig(resp.CurAppConfig); e == nil {
+					log.Error("[Config.rpcsdk] hot update write appconfig file error:", e)
 				} else {
 					instance.opnum = resp.OpNum
 				}
@@ -356,33 +474,29 @@ func (s *sdk) updateAppConfig(appconfig string) error {
 		appconfig = "{}"
 	}
 	if len(appconfig) < 2 || appconfig[0] != '{' || appconfig[len(appconfig)-1] != '}' || !json.Valid(common.Str2byte(appconfig)) {
-		return errors.New("[config.sdk.updateAppConfig] data format error")
+		return errors.New("[Config.sdk.updateAppConfig] data format error")
 	}
 	appfile, e := os.OpenFile(s.path+"/AppConfig_tmp.json", os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0644)
 	if e != nil {
-		log.Error("[config.sdk.updateAppConfig] open file error:", e)
+		log.Error("[Config.sdk.updateAppConfig] open file error:", e)
 		return e
 	}
 
-	n, e := appfile.WriteString(appconfig)
+	_, e = appfile.Write(common.Str2byte(appconfig))
 	if e != nil {
-		log.Error("[config.sdk.updateAppConfig] write file error:", e)
-		return e
-	}
-	if n != len(appconfig) {
-		log.Error("[config.sdk.updateAppConfig] write file error: short write")
+		log.Error("[Config.sdk.updateAppConfig] write file error:", e)
 		return e
 	}
 	if e = appfile.Sync(); e != nil {
-		log.Error("[config.sdk.updateAppConfig] sync to disk error:", e)
+		log.Error("[Config.sdk.updateAppConfig] sync to disk error:", e)
 		return e
 	}
 	if e = appfile.Close(); e != nil {
-		log.Error("[config.sdk.updateAppConfig] close file error:", e)
+		log.Error("[Config.sdk.updateAppConfig] close file error:", e)
 		return e
 	}
 	if e = os.Rename(s.path+"/AppConfig_tmp.json", s.path+"/AppConfig.json"); e != nil {
-		log.Error("[config.sdk.updateAppConfig] rename error:", e)
+		log.Error("[Config.sdk.updateAppConfig] rename error:", e)
 		return e
 	}
 	return nil
@@ -392,32 +506,28 @@ func (s *sdk) updateSourceConfig(sourceconfig string) error {
 		sourceconfig = "{}"
 	}
 	if len(sourceconfig) < 2 || sourceconfig[0] != '{' || sourceconfig[len(sourceconfig)-1] != '}' || !json.Valid(common.Str2byte(sourceconfig)) {
-		return errors.New("[config.sdk.updateSourceConfig] data format error")
+		return errors.New("[Config.sdk.updateSourceConfig] data format error")
 	}
 	sourcefile, e := os.OpenFile(s.path+"/SourceConfig_tmp.json", os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0644)
 	if e != nil {
-		log.Error("[config.sdk.updateSourceConfig] open file error:", e)
+		log.Error("[Config.sdk.updateSourceConfig] open file error:", e)
 		return e
 	}
-	n, e := sourcefile.WriteString(sourceconfig)
+	_, e = sourcefile.Write(common.Str2byte(sourceconfig))
 	if e != nil {
-		log.Error("[config.sdk.updateSourceConfig] write file error:", e)
-		return e
-	}
-	if n != len(sourceconfig) {
-		log.Error("[config.sdk.updateSourceConfig] write file error: short write")
+		log.Error("[Config.sdk.updateSourceConfig] write file error:", e)
 		return e
 	}
 	if e = sourcefile.Sync(); e != nil {
-		log.Error("[config.sdk.updateSourceConfig] sync to disk error:", e)
+		log.Error("[Config.sdk.updateSourceConfig] sync to disk error:", e)
 		return e
 	}
 	if e = sourcefile.Close(); e != nil {
-		log.Error("[config.sdk.updateSourceConfig] close file error:", e)
+		log.Error("[Config.sdk.updateSourceConfig] close file error:", e)
 		return e
 	}
 	if e = os.Rename(s.path+"/SourceConfig_tmp.json", s.path+"/SourceConfig.json"); e != nil {
-		log.Error("[config.sdk.updateSourceConfig] rename error:", e)
+		log.Error("[Config.sdk.updateSourceConfig] rename error:", e)
 		return e
 	}
 	return nil

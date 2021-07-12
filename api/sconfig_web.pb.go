@@ -78,10 +78,7 @@ func (c *sconfigWebClient) Sinfo(ctx context.Context, req *Sinforeq) (*Sinforesp
 	if header == nil {
 		header = make(http.Header)
 	}
-	if md := metadata.GetAllMetadata(ctx); len(md) != 0 {
-		d, _ := json.Marshal(md)
-		header.Set("Metadata", common.Byte2str(d))
-	}
+	md := metadata.GetAllMetadata(ctx)
 	header.Set("Content-Type", "application/x-www-form-urlencoded")
 	buf := bufpool.GetBuffer()
 	if len(req.Groupname) != 0 {
@@ -107,7 +104,7 @@ func (c *sconfigWebClient) Sinfo(ctx context.Context, req *Sinforeq) (*Sinforesp
 	if buf.Len() > 0 {
 		buf.Bytes()[0] = '?'
 	}
-	callback, e := c.cc.Get(ctx, 0, WebPathSconfigSinfo+buf.String(), header)
+	callback, e := c.cc.Get(ctx, 0, WebPathSconfigSinfo+buf.String(), header, md)
 	bufpool.PutBuffer(buf)
 	if e != nil {
 		return nil, fmt.Errorf("call error:" + e.Error())
@@ -147,13 +144,10 @@ func (c *sconfigWebClient) Sset(ctx context.Context, req *Ssetreq) (*Ssetresp, e
 	if header == nil {
 		header = make(http.Header)
 	}
-	if md := metadata.GetAllMetadata(ctx); len(md) != 0 {
-		d, _ := json.Marshal(md)
-		header.Set("Metadata", common.Byte2str(d))
-	}
+	md := metadata.GetAllMetadata(ctx)
 	header.Set("Content-Type", "application/json")
 	reqdata, _ := json.Marshal(req)
-	callback, e := c.cc.Post(ctx, 0, WebPathSconfigSset, header, reqdata)
+	callback, e := c.cc.Post(ctx, 0, WebPathSconfigSset, header, md, reqdata)
 	if e != nil {
 		return nil, fmt.Errorf("call error:" + e.Error())
 	}
@@ -196,13 +190,10 @@ func (c *sconfigWebClient) Srollback(ctx context.Context, req *Srollbackreq) (*S
 	if header == nil {
 		header = make(http.Header)
 	}
-	if md := metadata.GetAllMetadata(ctx); len(md) != 0 {
-		d, _ := json.Marshal(md)
-		header.Set("Metadata", common.Byte2str(d))
-	}
+	md := metadata.GetAllMetadata(ctx)
 	header.Set("Content-Type", "application/json")
 	reqdata, _ := json.Marshal(req)
-	callback, e := c.cc.Post(ctx, 0, WebPathSconfigSrollback, header, reqdata)
+	callback, e := c.cc.Post(ctx, 0, WebPathSconfigSrollback, header, md, reqdata)
 	if e != nil {
 		return nil, fmt.Errorf("call error:" + e.Error())
 	}
@@ -245,10 +236,7 @@ func (c *sconfigWebClient) Sget(ctx context.Context, req *Sgetreq) (*Sgetresp, e
 	if header == nil {
 		header = make(http.Header)
 	}
-	if md := metadata.GetAllMetadata(ctx); len(md) != 0 {
-		d, _ := json.Marshal(md)
-		header.Set("Metadata", common.Byte2str(d))
-	}
+	md := metadata.GetAllMetadata(ctx)
 	header.Set("Content-Type", "application/x-www-form-urlencoded")
 	buf := bufpool.GetBuffer()
 	if len(req.Groupname) != 0 {
@@ -275,7 +263,7 @@ func (c *sconfigWebClient) Sget(ctx context.Context, req *Sgetreq) (*Sgetresp, e
 	if buf.Len() > 0 {
 		buf.Bytes()[0] = '?'
 	}
-	callback, e := c.cc.Get(ctx, 0, WebPathSconfigSget+buf.String(), header)
+	callback, e := c.cc.Get(ctx, 0, WebPathSconfigSget+buf.String(), header, md)
 	bufpool.PutBuffer(buf)
 	if e != nil {
 		return nil, fmt.Errorf("call error:" + e.Error())
@@ -307,16 +295,13 @@ func (c *sconfigWebClient) Sgroups(ctx context.Context, req *Sgroupsreq) (*Sgrou
 	if header == nil {
 		header = make(http.Header)
 	}
-	if md := metadata.GetAllMetadata(ctx); len(md) != 0 {
-		d, _ := json.Marshal(md)
-		header.Set("Metadata", common.Byte2str(d))
-	}
+	md := metadata.GetAllMetadata(ctx)
 	header.Set("Content-Type", "application/x-www-form-urlencoded")
 	buf := bufpool.GetBuffer()
 	if buf.Len() > 0 {
 		buf.Bytes()[0] = '?'
 	}
-	callback, e := c.cc.Get(ctx, 0, WebPathSconfigSgroups+buf.String(), header)
+	callback, e := c.cc.Get(ctx, 0, WebPathSconfigSgroups+buf.String(), header, md)
 	bufpool.PutBuffer(buf)
 	if e != nil {
 		return nil, fmt.Errorf("call error:" + e.Error())
@@ -352,10 +337,7 @@ func (c *sconfigWebClient) Sapps(ctx context.Context, req *Sappsreq) (*Sappsresp
 	if header == nil {
 		header = make(http.Header)
 	}
-	if md := metadata.GetAllMetadata(ctx); len(md) != 0 {
-		d, _ := json.Marshal(md)
-		header.Set("Metadata", common.Byte2str(d))
-	}
+	md := metadata.GetAllMetadata(ctx)
 	header.Set("Content-Type", "application/x-www-form-urlencoded")
 	buf := bufpool.GetBuffer()
 	if len(req.Groupname) != 0 {
@@ -368,7 +350,7 @@ func (c *sconfigWebClient) Sapps(ctx context.Context, req *Sappsreq) (*Sappsresp
 	if buf.Len() > 0 {
 		buf.Bytes()[0] = '?'
 	}
-	callback, e := c.cc.Get(ctx, 0, WebPathSconfigSapps+buf.String(), header)
+	callback, e := c.cc.Get(ctx, 0, WebPathSconfigSapps+buf.String(), header, md)
 	bufpool.PutBuffer(buf)
 	if e != nil {
 		return nil, fmt.Errorf("call error:" + e.Error())
@@ -400,13 +382,10 @@ func (c *sconfigWebClient) Ssetwatchaddr(ctx context.Context, req *Ssetwatchaddr
 	if header == nil {
 		header = make(http.Header)
 	}
-	if md := metadata.GetAllMetadata(ctx); len(md) != 0 {
-		d, _ := json.Marshal(md)
-		header.Set("Metadata", common.Byte2str(d))
-	}
+	md := metadata.GetAllMetadata(ctx)
 	header.Set("Content-Type", "application/json")
 	reqdata, _ := json.Marshal(req)
-	callback, e := c.cc.Post(ctx, 0, WebPathSconfigSsetwatchaddr, header, reqdata)
+	callback, e := c.cc.Post(ctx, 0, WebPathSconfigSsetwatchaddr, header, md, reqdata)
 	if e != nil {
 		return nil, fmt.Errorf("call error:" + e.Error())
 	}
@@ -437,16 +416,13 @@ func (c *sconfigWebClient) Sgetwatchaddr(ctx context.Context, req *Sgetwatchaddr
 	if header == nil {
 		header = make(http.Header)
 	}
-	if md := metadata.GetAllMetadata(ctx); len(md) != 0 {
-		d, _ := json.Marshal(md)
-		header.Set("Metadata", common.Byte2str(d))
-	}
+	md := metadata.GetAllMetadata(ctx)
 	header.Set("Content-Type", "application/x-www-form-urlencoded")
 	buf := bufpool.GetBuffer()
 	if buf.Len() > 0 {
 		buf.Bytes()[0] = '?'
 	}
-	callback, e := c.cc.Get(ctx, 0, WebPathSconfigSgetwatchaddr+buf.String(), header)
+	callback, e := c.cc.Get(ctx, 0, WebPathSconfigSgetwatchaddr+buf.String(), header, md)
 	bufpool.PutBuffer(buf)
 	if e != nil {
 		return nil, fmt.Errorf("call error:" + e.Error())

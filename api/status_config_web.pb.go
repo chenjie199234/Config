@@ -45,10 +45,7 @@ func (c *statusWebClient) Ping(ctx context.Context, req *Pingreq) (*Pingresp, er
 	if header == nil {
 		header = make(http.Header)
 	}
-	if md := metadata.GetAllMetadata(ctx); len(md) != 0 {
-		d, _ := json.Marshal(md)
-		header.Set("Metadata", common.Byte2str(d))
-	}
+	md := metadata.GetAllMetadata(ctx)
 	header.Set("Content-Type", "application/x-www-form-urlencoded")
 	buf := bufpool.GetBuffer()
 	if req.Timestamp != 0 {
@@ -60,7 +57,7 @@ func (c *statusWebClient) Ping(ctx context.Context, req *Pingreq) (*Pingresp, er
 	if buf.Len() > 0 {
 		buf.Bytes()[0] = '?'
 	}
-	callback, e := c.cc.Get(ctx, 200000000, WebPathStatusPing+buf.String(), header)
+	callback, e := c.cc.Get(ctx, 200000000, WebPathStatusPing+buf.String(), header, md)
 	bufpool.PutBuffer(buf)
 	if e != nil {
 		return nil, fmt.Errorf("call error:" + e.Error())
