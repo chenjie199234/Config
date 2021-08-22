@@ -82,37 +82,45 @@ func NewWebSdk(path, selfgroup, selfname string) error {
 	} else {
 		//run watch logic
 		dao := sconfig.NewDao(nil, nil, db)
-		initch := make(chan struct{}, 1)
+		initch := make(chan error, 1)
+		notice := func(e error) {
+			select {
+			case initch <- e:
+			default:
+			}
+		}
 		go func() {
 			for {
 				if e := dao.MongoWatch(selfgroup, selfname, func(config *sconfig.Config) {
 					if config == nil {
 						if e := instance.updateAppConfig(""); e != nil {
 							log.Error("[Config.websdk] write appconfig file error:", e)
+							notice(e)
 						}
 						if e := instance.updateSourceConfig(""); e != nil {
 							log.Error("[Config.websdk] write sourceconfig file error:", e)
+							notice(e)
 						}
+						notice(nil)
 					} else {
 						if e := instance.updateAppConfig(config.AppConfig); e != nil {
 							log.Error("[Config.websdk] write appconfig file error:", e)
+							notice(e)
 						}
 						if e := instance.updateSourceConfig(config.SourceConfig); e != nil {
 							log.Error("[Config.websdk] write sourceconfig file error:", e)
+							notice(e)
 						}
-					}
-					select {
-					case initch <- struct{}{}:
-					default:
+						notice(nil)
 					}
 				}); e != nil {
 					log.Error("[Config.websdk] watch mongodb error:", e)
+					notice(e)
 					time.Sleep(time.Millisecond * 500)
 				}
 			}
 		}()
-		<-initch
-		return nil
+		return <-initch
 	}
 }
 
@@ -170,7 +178,13 @@ func NewRpcSdk(path, selfgroup, selfname string) error {
 	} else {
 		//run watch logic
 		dao := sconfig.NewDao(nil, nil, db)
-		initch := make(chan struct{}, 1)
+		initch := make(chan error, 1)
+		notice := func(e error) {
+			select {
+			case initch <- e:
+			default:
+			}
+		}
 		go func() {
 			for {
 				if e := dao.MongoWatch(selfgroup, selfname, func(config *sconfig.Config) {
@@ -178,30 +192,32 @@ func NewRpcSdk(path, selfgroup, selfname string) error {
 					if config == nil {
 						if e := instance.updateAppConfig(""); e != nil {
 							log.Error("[Config.rpcsdk] write appconfig file error:", e)
+							notice(e)
 						}
 						if e := instance.updateSourceConfig(""); e != nil {
 							log.Error("[Config.rpcsdk] write sourceconfig file error:", e)
+							notice(e)
 						}
+						notice(nil)
 					} else {
 						if e := instance.updateAppConfig(config.AppConfig); e != nil {
 							log.Error("[Config.rpcsdk] write appconfig file error:", e)
+							notice(e)
 						}
 						if e := instance.updateAppConfig(config.AppConfig); e != nil {
 							log.Error("[Config.rpcsdk] write sourceconfig file error:", e)
+							notice(e)
 						}
-					}
-					select {
-					case initch <- struct{}{}:
-					default:
+						notice(nil)
 					}
 				}); e != nil {
 					log.Error("[Config.rpcsdk] watch mongodb error:", e)
+					notice(e)
 					time.Sleep(time.Millisecond * 500)
 				}
 			}
 		}()
-		<-initch
-		return nil
+		return <-initch
 	}
 }
 
