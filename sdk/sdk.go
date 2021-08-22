@@ -64,13 +64,13 @@ func NewWebSdk(path, selfgroup, selfname string) error {
 	defer cancel()
 	var resp *api.SwatchaddrResp
 	for {
+		time.Sleep(time.Millisecond * 25)
 		resp, e = client.Swatchaddr(ctx, &api.SwatchaddrReq{}, nil)
 		if e != nil {
 			log.Error("[Config.websdk] call config server for watch addr error:", e)
 			if cerror.Equal(e, context.DeadlineExceeded) || cerror.Equal(e, context.Canceled) {
 				return errors.New("[Config.websdk] get watch addrs failed")
 			}
-			time.Sleep(time.Millisecond * 25)
 			continue
 		}
 		break
@@ -149,13 +149,13 @@ func NewRpcSdk(path, selfgroup, selfname string) error {
 	defer cancel()
 	var resp *api.SwatchaddrResp
 	for {
+		time.Sleep(time.Millisecond * 25)
 		resp, e = client.Swatchaddr(ctx, &api.SwatchaddrReq{})
 		if e != nil {
 			log.Error("[Config.rpcsdk] call config server for watch addr error:", e)
 			if cerror.Equal(e, context.DeadlineExceeded) || cerror.Equal(e, context.Canceled) {
 				return errors.New("[Config.rpcsdk] get watch addr failed")
 			}
-			time.Sleep(time.Millisecond * 25)
 			continue
 		}
 		break
