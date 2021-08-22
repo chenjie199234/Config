@@ -35,6 +35,7 @@ func NewWebSdk(path, selfgroup, selfname string) error {
 		return nil
 	}
 	webc := &web.ClientConfig{
+		DiscoverInterval: time.Second * 10,
 		DiscoverFunction: func(group, name string) (map[string]*web.RegisterData, error) {
 			result := make(map[string]*web.RegisterData)
 			addrs, e := net.LookupHost(name + "-service-headless" + "." + group)
@@ -92,27 +93,15 @@ func NewWebSdk(path, selfgroup, selfname string) error {
 		go func() {
 			for {
 				if e := dao.MongoWatch(selfgroup, selfname, func(config *sconfig.Config) {
-					if config == nil {
-						if e := instance.updateAppConfig(""); e != nil {
-							log.Error("[Config.websdk] write appconfig file error:", e)
-							notice(e)
-						}
-						if e := instance.updateSourceConfig(""); e != nil {
-							log.Error("[Config.websdk] write sourceconfig file error:", e)
-							notice(e)
-						}
-						notice(nil)
-					} else {
-						if e := instance.updateAppConfig(config.AppConfig); e != nil {
-							log.Error("[Config.websdk] write appconfig file error:", e)
-							notice(e)
-						}
-						if e := instance.updateSourceConfig(config.SourceConfig); e != nil {
-							log.Error("[Config.websdk] write sourceconfig file error:", e)
-							notice(e)
-						}
-						notice(nil)
+					if e := instance.updateAppConfig(config.AppConfig); e != nil {
+						log.Error("[Config.websdk] write appconfig file error:", e)
+						notice(e)
 					}
+					if e := instance.updateSourceConfig(config.SourceConfig); e != nil {
+						log.Error("[Config.websdk] write sourceconfig file error:", e)
+						notice(e)
+					}
+					notice(nil)
 				}); e != nil {
 					log.Error("[Config.websdk] watch mongodb error:", e)
 					notice(e)
@@ -131,6 +120,7 @@ func NewRpcSdk(path, selfgroup, selfname string) error {
 		return nil
 	}
 	rpcc := &rpc.ClientConfig{
+		DiscoverInterval: time.Second * 10,
 		DiscoverFunction: func(group, name string) (map[string]*rpc.RegisterData, error) {
 			result := make(map[string]*rpc.RegisterData)
 			addrs, e := net.LookupHost(name + "-service-headless" + "." + group)
@@ -188,28 +178,15 @@ func NewRpcSdk(path, selfgroup, selfname string) error {
 		go func() {
 			for {
 				if e := dao.MongoWatch(selfgroup, selfname, func(config *sconfig.Config) {
-					//only appconfig can be hot updated
-					if config == nil {
-						if e := instance.updateAppConfig(""); e != nil {
-							log.Error("[Config.rpcsdk] write appconfig file error:", e)
-							notice(e)
-						}
-						if e := instance.updateSourceConfig(""); e != nil {
-							log.Error("[Config.rpcsdk] write sourceconfig file error:", e)
-							notice(e)
-						}
-						notice(nil)
-					} else {
-						if e := instance.updateAppConfig(config.AppConfig); e != nil {
-							log.Error("[Config.rpcsdk] write appconfig file error:", e)
-							notice(e)
-						}
-						if e := instance.updateAppConfig(config.AppConfig); e != nil {
-							log.Error("[Config.rpcsdk] write sourceconfig file error:", e)
-							notice(e)
-						}
-						notice(nil)
+					if e := instance.updateAppConfig(config.AppConfig); e != nil {
+						log.Error("[Config.rpcsdk] write appconfig file error:", e)
+						notice(e)
 					}
+					if e := instance.updateAppConfig(config.AppConfig); e != nil {
+						log.Error("[Config.rpcsdk] write sourceconfig file error:", e)
+						notice(e)
+					}
+					notice(nil)
 				}); e != nil {
 					log.Error("[Config.rpcsdk] watch mongodb error:", e)
 					notice(e)

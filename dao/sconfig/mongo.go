@@ -62,13 +62,34 @@ func (d *Dao) MongoSetConfig(ctx context.Context, groupname, appname, appconfig,
 			s.AbortTransaction(sctx)
 		}
 	}()
-	filter := bson.M{"index": 0}
-	update := bson.A{
-		bson.M{"$inc": bson.M{"op_num": 1, "max_index:": 1}},
-		bson.M{"$set": bson.M{"cur_index": "$max_index"}},
+	filter1 := bson.M{"index": 0}
+	update1 := bson.A{
+		bson.M{
+			"$set": bson.M{
+				"op_num": bson.M{
+					"$ifNull": bson.A{
+						bson.M{"$add": bson.A{"$op_num", 1}},
+						1,
+					},
+				},
+				"max_index": bson.M{
+					"$ifNull": bson.A{
+						bson.M{"$add": bson.A{"$max_index", 1}},
+						1,
+					},
+				},
+			},
+		},
+		bson.M{
+			"$set": bson.M{
+				"cur_index": bson.M{
+					"$toLong": "$max_index",
+				},
+			},
+		},
 	}
 	summary := &Summary{}
-	r := d.mongo.Database("s_"+groupname).Collection(appname).FindOneAndUpdate(sctx, filter, update, options.FindOneAndUpdate().SetUpsert(true))
+	r := d.mongo.Database("s_"+groupname).Collection(appname).FindOneAndUpdate(sctx, filter1, update1, options.FindOneAndUpdate().SetUpsert(true))
 	if r.Err() != nil && r.Err() != mongo.ErrNoDocuments {
 		e = r.Err()
 		return
@@ -77,12 +98,14 @@ func (d *Dao) MongoSetConfig(ctx context.Context, groupname, appname, appconfig,
 			return
 		}
 	}
-	_, e = d.mongo.Database("s_"+groupname).Collection(appname).UpdateOne(sctx, bson.M{"index": summary.CurIndex + 1}, bson.M{"app_config": appconfig, "source_config": sourceconfig}, options.Update().SetUpsert(true))
+	filter2 := bson.M{"index": summary.CurIndex + 1}
+	update2 := bson.M{"$set": bson.M{"app_config": appconfig, "source_config": sourceconfig}}
+	_, e = d.mongo.Database("s_"+groupname).Collection(appname).UpdateOne(sctx, filter2, update2, options.Update().SetUpsert(true))
 	return
 }
 
 func (d *Dao) MongoRollbackConfig(ctx context.Context, groupname, appname string, index uint64) error {
-	filter := bson.M{"index": 0}
+	filter := bson.M{"index": 0, "max_index": bson.M{"$gte": index}}
 	update := bson.M{
 		"$set": bson.M{"cur_index": index},
 		"$inc": bson.M{"op_num": 1},
@@ -111,8 +134,8 @@ func (d *Dao) MongoGetApps(ctx context.Context, groupname string) ([]string, err
 func (d *Dao) MongoWatch(groupname, appname string, update func(*Config)) error {
 	curop := uint64(0)
 
-	pipeline := mongo.Pipeline{bson.D{bson.E{Key: "$match", Value: bson.M{"documentKey.index": 0}}}}
-	c, e := d.mongo.Database("s_"+groupname, options.Database().SetReadConcern(readconcern.Majority())).Collection(appname).Watch(context.Background(), pipeline)
+	pipeline := mongo.Pipeline{bson.D{bson.E{Key: "$match", Value: bson.M{"fullDocument.index": 0}}}}
+	c, e := d.mongo.Database("s_"+groupname, options.Database().SetReadConcern(readconcern.Majority())).Collection(appname).Watch(context.Background(), pipeline, options.ChangeStream().SetFullDocument(options.UpdateLookup))
 	if e != nil {
 		return e
 	}
