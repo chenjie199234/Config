@@ -91,11 +91,11 @@ if %1 == "pb" (
 if "%1" == "pb" (
 	goto :pb
 )
-if %1 == "kubernetes" (
-	goto :kubernetes
+if %1 == "kube" (
+	goto :kube
 )
-if "%1" ==  "kubernetes" (
-	goto :kubernetes
+if "%1" ==  "kube" (
+	goto :kube
 )
 if %1 == "new" (
 	if "%2" == "" (
@@ -117,9 +117,11 @@ if "%1" == "new" (
 )
 
 :pb
-	protoc --go_out=paths=source_relative:. ./api/*.proto
-	protoc --go-rpc_out=paths=source_relative:. ./api/*.proto
-	protoc --go-web_out=paths=source_relative:. ./api/*.proto
+	go mod tidy
+	for /F %%i in ('go list -m -f "{{.Dir}}" github.com/chenjie199234/Corelib') do ( set corelib=%%i)
+	protoc -I ./ -I %corelib% --go_out=paths=source_relative:. ./api/*.proto
+	protoc -I ./ -I %corelib% --go-rpc_out=paths=source_relative:. ./api/*.proto
+	protoc -I ./ -I %corelib% --go-web_out=paths=source_relative:. ./api/*.proto
 	go mod tidy
 goto :end
 
@@ -139,7 +141,7 @@ goto :end
 	uxp.exe -9 main.exe
 goto :end
 
-:kubernetes
+:kube
 	codegen -n config -g default -k
 goto :end
 
@@ -163,7 +165,7 @@ goto :end
 	echo    build                     Complie this program to binary.
 	echo    pb                        Generate the proto in this program.
 	echo    new <sub service name^>    Create a new sub service.
-	echo    kubernetes                Update or add kubernetes config.
+	echo    kube                      Update or add kubernetes config.
 	echo    h/-h/help/-help/--help    Show this message.
 
 :end

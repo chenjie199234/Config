@@ -1,27 +1,24 @@
 # config
 ```
-config是一个配置中心服务
+config是一个微服务.
 运行cmd脚本可查看使用方法.windows下将./cmd.sh换为cmd.bat
+./cmd.sh help 输出帮助信息
 ./cmd.sh pb 解析proto文件,生成打桩代码
 ./cmd.sh run 运行该程序
 ./cmd.sh build 编译该程序,会在根目录下生成一个可执行文件
 ./cmd.sh new 在该项目中创建一个新的子服务
-./cmd.sh help 输出帮助信息
-./cmd.sh kubernetes 增加或者更新kubernetes的配置
+./cmd.sh kube 增加或者更新kubernetes的配置
 ```
 
 
 ## 环境变量
 ```
-DISCOVERY_SERVER_GROUP 			指定注册中心服务器所属的group名字
-DISCOVERY_SERVER_NAME 			指定注册中心服务器自身的名字
-DISCOVERY_SERVER_PORT  			指定注册中心服务器监听的端口
 SERVER_VERIFY_DATA                      内部服务连接使用的校验数据,数据格式为json字符串数据["xxx1","xxx2"]
 CONFIG_TYPE 				配置类型
 					0-使用本地配置,路径:./
-					1-使用k8s的configmap,路径:./k8sconfig
+					1-使用kuberneters的configmap,路径:./kubeconfig
 RUN_ENV 				当前运行环境,如:test,pre,prod
-DEPLOY_ENV 				部署环境,如:k8s,host
+DEPLOY_ENV 				部署环境,如:kube,host
 ```
 
 ## 配置文件

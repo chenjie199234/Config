@@ -62,7 +62,7 @@ spec:
             failureThreshold: 3
           volumeMounts:
             - name: config-config-volume
-              mountPath: /root/app/k8sconfig
+              mountPath: /root/app/kubeconfig
       volumes:
         - name: config-config-volume
           configMap:
@@ -111,5 +111,10 @@ metadata:
 spec:
   type: ClusterIP
   clusterIP: None
+  ports:
+  - name: web
+    protocol: TCP
+    port: 80
+    targetPort: 8000
   selector:
     app: config

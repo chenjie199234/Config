@@ -4,8 +4,10 @@ import (
 	"context"
 	"time"
 
+	//"config/config"
 	"github.com/chenjie199234/Config/api"
 	statusdao "github.com/chenjie199234/Config/dao/status"
+	//"github.com/chenjie199234/Config/ecode"
 	//"github.com/chenjie199234/Corelib/log"
 	//"github.com/chenjie199234/Corelib/rpc"
 	//"github.com/chenjie199234/Corelib/web"
@@ -38,4 +40,3 @@ func (s *Service) Ping(ctx context.Context, in *api.Pingreq) (*api.Pingresp, err
 func (s *Service) Stop() {
 
 }
-

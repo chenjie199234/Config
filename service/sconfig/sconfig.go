@@ -8,46 +8,38 @@ import (
 	"github.com/chenjie199234/Config/api"
 	"github.com/chenjie199234/Config/config"
 	sconfigdao "github.com/chenjie199234/Config/dao/sconfig"
+
 	"github.com/chenjie199234/Corelib/log"
 	"github.com/chenjie199234/Corelib/util/common"
-	"go.mongodb.org/mongo-driver/mongo"
 )
 
 //Service subservice for sconfig business
 type Service struct {
+	mongoname  string
 	sconfigDao *sconfigdao.Dao
 }
 
 //Start -
 func Start() *Service {
-	return &Service{
-		sconfigDao: sconfigdao.NewDao(nil, nil, config.GetMongo("config_mongo")),
+	s := &Service{
+		mongoname: "config_mongo",
 	}
+	s.sconfigDao = sconfigdao.NewDao(nil, nil, config.GetMongo(s.mongoname))
+	return s
 }
 
 //one specific app's current info
-func (s *Service) Sinfo(ctx context.Context, in *api.Sinforeq) (*api.Sinforesp, error) {
-	sum, conf, e := s.sconfigDao.MongoGetInfo(ctx, in.Groupname, in.Appname, in.OpNum)
+func (s *Service) Sinfo(ctx context.Context, in *api.SinfoReq) (*api.SinfoResp, error) {
+	sum, conf, e := s.sconfigDao.MongoGetInfo(ctx, in.Groupname, in.Appname)
 	if e != nil {
 		log.Error("[sconfig.Info] error:", e)
 		return nil, e
 	}
-	if sum == nil {
-		//not exist
-		return &api.Sinforesp{}, nil
-	} else if conf == nil {
-		//nothing changed
-		return &api.Sinforesp{OpNum: in.OpNum}, nil
-	}
-	temp := make([]string, 0, len(sum.AllIds))
-	for _, v := range sum.AllIds {
-		temp = append(temp, v.Hex())
-	}
-	return &api.Sinforesp{CurId: sum.CurId.Hex(), AllIds: temp, OpNum: sum.OpNum, CurAppConfig: conf.AppConfig, CurSourceConfig: conf.SourceConfig}, nil
+	return &api.SinfoResp{CurIndex: sum.CurIndex, MaxIndex: sum.MaxIndex, OpNum: sum.OpNum, CurAppConfig: conf.AppConfig, CurSourceConfig: conf.SourceConfig}, nil
 }
 
 //set one specific app's config
-func (s *Service) Sset(ctx context.Context, in *api.Ssetreq) (*api.Ssetresp, error) {
+func (s *Service) Sset(ctx context.Context, in *api.SsetReq) (*api.SsetResp, error) {
 	if in.AppConfig == "" {
 		in.AppConfig = "{}"
 	}
@@ -65,89 +57,57 @@ func (s *Service) Sset(ctx context.Context, in *api.Ssetreq) (*api.Ssetresp, err
 		log.Error("[sconfig.Set] error:", e)
 		return nil, e
 	}
-	return &api.Ssetresp{}, nil
+	return &api.SsetResp{}, nil
 }
 
 //rollback one specific app's config
-func (s *Service) Srollback(ctx context.Context, in *api.Srollbackreq) (*api.Srollbackresp, error) {
-	e := s.sconfigDao.MongoRollbackConfig(ctx, in.Groupname, in.Appname, in.Id)
+func (s *Service) Srollback(ctx context.Context, in *api.SrollbackReq) (*api.SrollbackResp, error) {
+	e := s.sconfigDao.MongoRollbackConfig(ctx, in.Groupname, in.Appname, in.Index)
 	if e != nil {
 		log.Error("[sconfig.Rollback] error:", e)
 		return nil, e
 	}
-	return &api.Srollbackresp{}, nil
+	return &api.SrollbackResp{}, nil
 }
 
 //get one specific app's config
-func (s *Service) Sget(ctx context.Context, in *api.Sgetreq) (*api.Sgetresp, error) {
-	conf, e := s.sconfigDao.MongoGetConfig(ctx, in.Groupname, in.Appname, in.Id)
+func (s *Service) Sget(ctx context.Context, in *api.SgetReq) (*api.SgetResp, error) {
+	conf, e := s.sconfigDao.MongoGetConfig(ctx, in.Groupname, in.Appname, in.Index)
 	if e != nil {
 		log.Error("[sconfig.Get] error:", e)
-		if e == mongo.ErrNoDocuments {
-			return &api.Sgetresp{}, nil
-		}
 		return nil, e
 	}
-	return &api.Sgetresp{AppConfig: conf.AppConfig, SourceConfig: conf.SourceConfig}, nil
+	return &api.SgetResp{Index: conf.Index, AppConfig: conf.AppConfig, SourceConfig: conf.SourceConfig}, nil
 }
 
 //get all groups
-func (s *Service) Sgroups(ctx context.Context, in *api.Sgroupsreq) (*api.Sgroupsresp, error) {
+func (s *Service) Sgroups(ctx context.Context, in *api.SgroupsReq) (*api.SgroupsResp, error) {
 	groups, e := s.sconfigDao.MongoGetGroups(ctx)
 	if e != nil {
 		log.Error("[sconfig.Groups] error:", e)
 		return nil, e
 	}
-	return &api.Sgroupsresp{Groups: groups}, nil
+	return &api.SgroupsResp{Groups: groups}, nil
 }
 
 //get all apps
-func (s *Service) Sapps(ctx context.Context, in *api.Sappsreq) (*api.Sappsresp, error) {
+func (s *Service) Sapps(ctx context.Context, in *api.SappsReq) (*api.SappsResp, error) {
 	apps, e := s.sconfigDao.MongoGetApps(ctx, in.Groupname)
 	if e != nil {
 		log.Error("[sconfig.Apps] error:", e)
 		return nil, e
 	}
-	return &api.Sappsresp{Apps: apps}, nil
-}
-
-//set watch addr
-func (s *Service) Ssetwatchaddr(ctx context.Context, in *api.Ssetwatchaddrreq) (*api.Ssetwatchaddrresp, error) {
-	if in.Username == "" || in.Passwd == "" || len(in.Addrs) == 0 || in.ReplicaSetName == "" {
-		if e := s.sconfigDao.MongoDelWatchAddr(ctx); e != nil {
-			log.Error("[sconfig.Ssetwatchaddr] error:", e)
-			return nil, e
-		}
-		return &api.Ssetwatchaddrresp{}, nil
-	} else {
-		if e := s.sconfigDao.MongoSetWatchAddr(ctx, &sconfigdao.WatchAddr{
-			Username:       in.Username,
-			Passwd:         in.Passwd,
-			Addrs:          in.Addrs,
-			ReplicaSetName: in.ReplicaSetName,
-		}); e != nil {
-			log.Error("[sconfig.Ssetwatchaddr] error:", e)
-			return nil, e
-		}
-		return &api.Ssetwatchaddrresp{}, nil
-	}
+	return &api.SappsResp{Apps: apps}, nil
 }
 
 //get watch addr
-func (s *Service) Sgetwatchaddr(ctx context.Context, in *api.Sgetwatchaddrreq) (*api.Sgetwatchaddrresp, error) {
-	wa, e := s.sconfigDao.MongoGetWatchAddr(ctx)
-	if e != nil {
-		log.Error("[sconfig.Sgetwatchaddr] error:", e)
-		if e == mongo.ErrNoDocuments {
-			return &api.Sgetwatchaddrresp{}, nil
-		}
-		return nil, e
-	}
-	return &api.Sgetwatchaddrresp{
-		Username:       wa.Username,
-		Passwd:         wa.Passwd,
-		Addrs:          wa.Addrs,
-		ReplicaSetName: wa.ReplicaSetName,
+func (s *Service) Swatchaddr(ctx context.Context, in *api.SwatchaddrReq) (*api.SwatchaddrResp, error) {
+	c := config.GetMongoC(s.mongoname)
+	return &api.SwatchaddrResp{
+		Username:       c.Username,
+		Passwd:         c.Passwd,
+		Addrs:          c.Addrs,
+		ReplicaSetName: c.ReplicaSetName,
 	}, nil
 }
 

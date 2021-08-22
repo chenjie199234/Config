@@ -4,115 +4,98 @@ syntax="proto3";
 package config;
 //this is the golang's package name,all proto in this project must use this name as the golang's package name
 option go_package="Config/api;api";
+import "pbex/pbex.proto";
 
 //this is the proto file for sconfig service
 service sconfig{
 	//one specific app's current info
-	rpc sinfo(sinforeq)returns(sinforesp);//method:get
+	rpc sinfo(sinfo_req)returns(sinfo_resp){
+		option (pbex.method)="get";
+		option (pbex.timeout)="250ms";
+	}
 	//set one specific app's config
-	rpc sset(ssetreq)returns(ssetresp);//method:post
+	rpc sset(sset_req)returns(sset_resp){
+		option (pbex.method)="post";
+		option (pbex.timeout)="250ms";
+	}
 	//rollback one specific app's config
-	rpc srollback(srollbackreq)returns(srollbackresp);//method:post
+	rpc srollback(srollback_req)returns(srollback_resp){
+		option (pbex.method)="post";
+		option (pbex.timeout)="250ms";
+	}
 	//get one specific app's config
-	rpc sget(sgetreq)returns(sgetresp);//method:get
+	rpc sget(sget_req)returns(sget_resp){
+		option (pbex.method)="get";
+		option (pbex.timeout)="250ms";
+	}
 	//get all groups
-	rpc sgroups(sgroupsreq)returns(sgroupsresp);//method:get
+	rpc sgroups(sgroups_req)returns(sgroups_resp){
+		option (pbex.method)="get";
+		option (pbex.timeout)="250ms";
+	}
 	//get all apps
-	rpc sapps(sappsreq)returns(sappsresp);//method:get
-	//set watch addr
-	rpc ssetwatchaddr(ssetwatchaddrreq)returns(ssetwatchaddrresp);//method:post
+	rpc sapps(sapps_req)returns(sapps_resp){
+		option (pbex.method)="get";
+		option (pbex.timeout)="250ms";
+	}
 	//get watch addr
-	rpc sgetwatchaddr(sgetwatchaddrreq)returns(sgetwatchaddrresp);//method:get
-
-	//comment option separate by '|'
-	//method:     http method(only for http,rpc will ignore this),only support:get,post
-	//timeout:    life control
-	//mids:       midwares
-
-	//rpc example(examplereq)returns(exampleresp);//method:get|timeout:200ms|mids:["examplemid1","examplemid2"]
+	rpc swatchaddr(swatchaddr_req)returns(swatchaddr_resp){
+		option (pbex.method)="get";
+		option (pbex.timeout)="250ms";
+	}
 }
-message sinforeq {
-	string groupname=1;//empty:false
-	string appname=2;//empty:false
-	//check if need update
-	//if not,only op_num field will return
-	//0 will always return all data
-	int64 op_num=3;//gte:0
+message sinfo_req {
+	string groupname=1[(pbex.string_bytes_len_gt)=0];
+	string appname=2[(pbex.string_bytes_len_gt)=0];
 }
-message sinforesp {
-	string cur_id=1;
-	string cur_app_config=2;
-	string cur_source_config=3;
-	int64 op_num=4;
-	//ids are sortted by create time
-	repeated string all_ids=5;
+message sinfo_resp {
+	uint64 cur_index=1;
+	uint64 max_index=2;
+	uint64 op_num=3;//0 means config not exist
+	string cur_app_config=4;
+	string cur_source_config=5;
 }
-message ssetreq {
-	string groupname=1;//empty:false
-	string appname=2;//empty:false
+message sset_req {
+	string groupname=1[(pbex.string_bytes_len_gt)=0];
+	string appname=2[(pbex.string_bytes_len_gt)=0];
 	string app_config=3;
 	string source_config=4;
 }
-message ssetresp {
+message sset_resp {
 }
-message srollbackreq{
-	string groupname=1;//empty:false
-	string appname=2;//empty:false
-	string id=3;//empty:false
+message srollback_req{
+	string groupname=1[(pbex.string_bytes_len_gt)=0];
+	string appname=2[(pbex.string_bytes_len_gt)=0];
+	uint64 index=3[(pbex.uint_gt)=0];
 }
-message srollbackresp{
-
+message srollback_resp{
 }
-message sgetreq {
-	string groupname=1;//empty:false
-	string appname=2;//empty:false
-	string id=3;//empty:false
+message sget_req {
+	string groupname=1[(pbex.string_bytes_len_gt)=0];
+	string appname=2[(pbex.string_bytes_len_gt)=0];
+	uint64 index=3[(pbex.uint_gt)=0];
 }
-message sgetresp {
-	string id=1;
+message sget_resp {
+	uint64 index=1;
 	string app_config=2;
 	string source_config=3;
 }
-message sgroupsreq {
+message sgroups_req {
 }
-message sgroupsresp {
+message sgroups_resp {
 	repeated string groups=1;
 }
-message sappsreq {
-	string groupname=1;//empty:false
+message sapps_req {
+	string groupname=1[(pbex.string_bytes_len_gt)=0];
 }
-message sappsresp {
+message sapps_resp {
 	repeated string apps=1;
 }
-message ssetwatchaddrreq{
+message swatchaddr_req{
+}
+message swatchaddr_resp{
 	string username=1;
 	string passwd=2;
 	repeated string addrs=3;
 	string replica_set_name=4;
 }
-message ssetwatchaddrresp{
-}
-message sgetwatchaddrreq{
-}
-message sgetwatchaddrresp{
-	string username=1;
-	string passwd=2;
-	repeated string addrs=3;
-	string replica_set_name=4;
-}
-//message examplereq{
-	//comment option separate by '|',only request message support
-	//header:     set to true,means this field comes from http's header(only for http,rpc will ignore this)
-	//empty:      set to false,means this field can't be empty,only support bytes,string,repeated,map,message field
-	//gt:         great then this value,only number kind field is useful
-	//gte:        great or equal then this value,only number kind field is useful
-	//lt:         less then this value,only number kind field is useful
-	//lte:        less or equal then this value,only number kind field is useful
-	//in:         value must in this collection(format:json string array),not support for map,message,repeated message field
-	//notin:      value must not in this collection(format:json string array),not support for map,message,repeated message field
-
-	//int64 example_for_comment_option=1;//header:true|gt:6|lt:666.6|gte:6.6|lte:666|in:["1","abc","3.14"]|notin:["1","abc","3.14"]
-//}
-//message exampleresp{
-	//int64 example_resp=1;
-//}

@@ -1,29 +1,28 @@
 package xweb
 
 import (
-	"sync"
 	"time"
 
 	"github.com/chenjie199234/Config/api"
 	"github.com/chenjie199234/Config/config"
 	"github.com/chenjie199234/Config/service"
+
 	"github.com/chenjie199234/Corelib/log"
 	"github.com/chenjie199234/Corelib/web"
 	"github.com/chenjie199234/Corelib/web/mids"
-	discoverysdk "github.com/chenjie199234/Discovery/sdk"
 )
 
 var s *web.WebServer
 
 //StartWebServer -
-func StartWebServer(wg *sync.WaitGroup) {
+func StartWebServer() {
 	c := config.GetWebServerConfig()
 	webc := &web.ServerConfig{
 		WaitCloseRefresh:   true,
 		GlobalTimeout:      time.Duration(c.GlobalTimeout),
 		IdleTimeout:        time.Duration(c.IdleTimeout),
 		HeartProbe:         time.Duration(c.HeartProbe),
-		StaticFileRootPath: c.StaticFile,
+		StaticFileRootPath: c.StaticFilePath,
 		MaxHeader:          1024,
 		SocketRBuf:         1024,
 		SocketWBuf:         1024,
@@ -61,15 +60,12 @@ func StartWebServer(wg *sync.WaitGroup) {
 	//return
 	//}
 
-	if config.EC.ServerVerifyDatas != nil {
-		if e = discoverysdk.RegWeb(8000, "http"); e != nil {
-			log.Error("[xweb] register web to discovery server error:", e)
-			return
-		}
-	}
-	wg.Done()
 	if e = s.StartWebServer(":8000", nil); e != nil {
-		log.Error("[xweb] start error:", e)
+		if e != web.ErrServerClosed {
+			log.Error("[xweb] start error:", e)
+		} else {
+			log.Info("[xweb] server closed")
+		}
 		return
 	}
 }

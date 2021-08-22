@@ -16,14 +16,16 @@ help() {
 	echo "   build                     Complie this program to binary"
 	echo "   pb                        Generate the proto in this program"
 	echo "   new <sub service name>    Create a new sub service"
-	echo "   kubernetes                Update or add kubernetes config"
+	echo "   kube                      Update or add kubernetes config"
 	echo "   h/-h/help/-help/--help    Show this message"
 }
 
 pb() {
-	protoc --go_out=paths=source_relative:. ./api/*.proto
-	protoc --go-rpc_out=paths=source_relative:. ./api/*.proto
-	protoc --go-web_out=paths=source_relative:. ./api/*.proto
+	go mod tidy
+	corelib=$(go list -m -f "{{.Dir}}" github.com/chenjie199234/Corelib)
+	protoc -I ./ -I $corelib --go_out=paths=source_relative:. ./api/*.proto
+	protoc -I ./ -I $corelib --go-rpc_out=paths=source_relative:. ./api/*.proto
+	protoc -I ./ -I $corelib --go-web_out=paths=source_relative:. ./api/*.proto
 	go mod tidy
 }
 
@@ -46,7 +48,7 @@ new() {
 	codegen -n config -g default -s $1
 }
 
-kubernetes() {
+kube() {
 	codegen -n config -g default -k
 }
 
@@ -105,8 +107,8 @@ if [[ "$1" == "pb" ]];then
 	exit 0
 fi
 
-if [[ "$1" == "kubernetes" ]];then
-	kubernetes
+if [[ "$1" == "kube" ]];then
+	kube
 	exit 0
 fi
 
