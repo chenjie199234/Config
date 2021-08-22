@@ -3,14 +3,15 @@ package sconfig
 import (
 	"context"
 	"encoding/json"
-	"errors"
 
 	"github.com/chenjie199234/Config/api"
 	"github.com/chenjie199234/Config/config"
 	sconfigdao "github.com/chenjie199234/Config/dao/sconfig"
+	"github.com/chenjie199234/Config/ecode"
 
 	"github.com/chenjie199234/Corelib/log"
 	"github.com/chenjie199234/Corelib/util/common"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 //Service subservice for sconfig business
@@ -33,7 +34,10 @@ func (s *Service) Sinfo(ctx context.Context, in *api.SinfoReq) (*api.SinfoResp, 
 	sum, conf, e := s.sconfigDao.MongoGetInfo(ctx, in.Groupname, in.Appname)
 	if e != nil {
 		log.Error("[sconfig.Sinfo] error:", e)
-		return nil, e
+		if e == mongo.ErrNoDocuments {
+			return nil, ecode.ErrNotExist
+		}
+		return nil, ecode.ErrSystem
 	}
 	return &api.SinfoResp{CurIndex: sum.CurIndex, MaxIndex: sum.MaxIndex, OpNum: sum.OpNum, CurAppConfig: conf.AppConfig, CurSourceConfig: conf.SourceConfig}, nil
 }
@@ -44,28 +48,31 @@ func (s *Service) Sset(ctx context.Context, in *api.SsetReq) (*api.SsetResp, err
 		in.AppConfig = "{}"
 	}
 	if len(in.AppConfig) < 2 || in.AppConfig[0] != '{' || in.AppConfig[len(in.AppConfig)-1] != '}' || !json.Valid(common.Str2byte(in.AppConfig)) {
-		return nil, errors.New("app_config must in json object format")
+		return nil, ecode.ErrCoinfigFormat
 	}
 	if in.SourceConfig == "" {
 		in.SourceConfig = "{}"
 	}
 	if len(in.SourceConfig) < 2 || in.SourceConfig[0] != '{' || in.SourceConfig[len(in.SourceConfig)-1] != '}' || !json.Valid(common.Str2byte(in.SourceConfig)) {
-		return nil, errors.New("source_config must in json object format")
+		return nil, ecode.ErrCoinfigFormat
 	}
 	e := s.sconfigDao.MongoSetConfig(ctx, in.Groupname, in.Appname, in.AppConfig, in.SourceConfig)
 	if e != nil {
 		log.Error("[sconfig.Sset] error:", e)
-		return nil, e
+		return nil, ecode.ErrSystem
 	}
 	return &api.SsetResp{}, nil
 }
 
 //rollback one specific app's config
 func (s *Service) Srollback(ctx context.Context, in *api.SrollbackReq) (*api.SrollbackResp, error) {
-	e := s.sconfigDao.MongoRollbackConfig(ctx, in.Groupname, in.Appname, in.Index)
+	status, e := s.sconfigDao.MongoRollbackConfig(ctx, in.Groupname, in.Appname, in.Index)
 	if e != nil {
 		log.Error("[sconfig.Srollback] error:", e)
-		return nil, e
+		return nil, ecode.ErrSystem
+	}
+	if !status {
+		return nil, ecode.ErrNotExist
 	}
 	return &api.SrollbackResp{}, nil
 }
@@ -75,7 +82,10 @@ func (s *Service) Sget(ctx context.Context, in *api.SgetReq) (*api.SgetResp, err
 	conf, e := s.sconfigDao.MongoGetConfig(ctx, in.Groupname, in.Appname, in.Index)
 	if e != nil {
 		log.Error("[sconfig.Sget] error:", e)
-		return nil, e
+		if e == mongo.ErrNoDocuments {
+			return nil, ecode.ErrNotExist
+		}
+		return nil, ecode.ErrSystem
 	}
 	return &api.SgetResp{Index: conf.Index, AppConfig: conf.AppConfig, SourceConfig: conf.SourceConfig}, nil
 }
@@ -85,7 +95,7 @@ func (s *Service) Sgroups(ctx context.Context, in *api.SgroupsReq) (*api.Sgroups
 	groups, e := s.sconfigDao.MongoGetGroups(ctx)
 	if e != nil {
 		log.Error("[sconfig.Sgroups] error:", e)
-		return nil, e
+		return nil, ecode.ErrSystem
 	}
 	return &api.SgroupsResp{Groups: groups}, nil
 }
@@ -95,7 +105,7 @@ func (s *Service) Sapps(ctx context.Context, in *api.SappsReq) (*api.SappsResp, 
 	apps, e := s.sconfigDao.MongoGetApps(ctx, in.Groupname)
 	if e != nil {
 		log.Error("[sconfig.Sapps] error:", e)
-		return nil, e
+		return nil, ecode.ErrSystem
 	}
 	return &api.SappsResp{Apps: apps}, nil
 }

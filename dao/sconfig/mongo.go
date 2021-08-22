@@ -104,16 +104,20 @@ func (d *Dao) MongoSetConfig(ctx context.Context, groupname, appname, appconfig,
 	return
 }
 
-func (d *Dao) MongoRollbackConfig(ctx context.Context, groupname, appname string, index uint64) error {
+func (d *Dao) MongoRollbackConfig(ctx context.Context, groupname, appname string, index uint64) (bool, error) {
 	filter := bson.M{"index": 0, "max_index": bson.M{"$gte": index}}
 	update := bson.M{
 		"$set": bson.M{"cur_index": index},
 		"$inc": bson.M{"op_num": 1},
 	}
-	if _, e := d.mongo.Database("s_"+groupname).Collection(appname).UpdateOne(ctx, filter, update); e != nil {
-		return e
+	r, e := d.mongo.Database("s_"+groupname).Collection(appname).UpdateOne(ctx, filter, update)
+	if e != nil {
+		return false, e
 	}
-	return nil
+	if r.MatchedCount == 0 {
+		return false, nil
+	}
+	return true, nil
 }
 
 func (d *Dao) MongoGetGroups(ctx context.Context) ([]string, error) {
