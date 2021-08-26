@@ -56,10 +56,38 @@ func getRpcClientConfig() *rpc.ClientConfig {
 		MaxMsgLen:              65535,
 		MaxBufferedWriteMsgNum: 256,
 		VerifyData:             rpcverifydata,
-		DiscoverFunction:       rpcDNS,
-		DiscoverInterval:       time.Duration(rc.DiscoverInterval),
+		DiscoverFunction:       rpcDNS(),
 	}
 }
+
+func rpcDNS() func(string, string, <-chan struct{}) (map[string]*rpc.RegisterData, error) {
+	tker := time.NewTicker(time.Second * 10)
+	return func(group, name string, manually <-chan struct{}) (map[string]*rpc.RegisterData, error) {
+		select {
+		case <-tker.C:
+		case <-manually:
+		}
+		result := make(map[string]*rpc.RegisterData)
+		addrs, e := net.LookupHost(name + "-service-headless" + "." + group)
+		if e != nil {
+			log.Error("[rpc.dns] get:", name+"-service-headless", "addrs error:", e)
+			return nil, e
+		}
+		for i := range addrs {
+			addrs[i] = addrs[i] + ":9000"
+		}
+		dserver := make(map[string]struct{})
+		dserver["dns"] = struct{}{}
+		for _, addr := range addrs {
+			result[addr] = &rpc.RegisterData{DServers: dserver}
+		}
+		for len(tker.C) > 0 {
+			<-tker.C
+		}
+		return result, nil
+	}
+}
+
 func getWebClientConfig() *web.ClientConfig {
 	wc := config.GetWebClientConfig()
 	return &web.ClientConfig{
@@ -70,43 +98,34 @@ func getWebClientConfig() *web.ClientConfig {
 		SocketRBuf:       1024,
 		SocketWBuf:       1024,
 		SkipVerifyTLS:    wc.SkipVerifyTls,
-		DiscoverFunction: webDNS,
-		DiscoverInterval: time.Duration(wc.DiscoverInterval),
+		DiscoverFunction: webDNS(),
 	}
 }
 
-func webDNS(group, name string) (map[string]*web.RegisterData, error) {
-	result := make(map[string]*web.RegisterData)
-	addrs, e := net.LookupHost(name + "-service-headless" + "." + group)
-	if e != nil {
-		log.Error("[web.dns] get:", name+"-service-headless", "addrs error:", e)
-		return nil, e
+func webDNS() func(string, string, <-chan struct{}) (map[string]*web.RegisterData, error) {
+	tker := time.NewTicker(time.Second * 10)
+	return func(group, name string, manually <-chan struct{}) (map[string]*web.RegisterData, error) {
+		select {
+		case <-tker.C:
+		case <-manually:
+		}
+		result := make(map[string]*web.RegisterData)
+		addrs, e := net.LookupHost(name + "-service-headless" + "." + group)
+		if e != nil {
+			log.Error("[web.dns] get:", name+"-service-headless", "addrs error:", e)
+			return nil, e
+		}
+		for i := range addrs {
+			addrs[i] = "http://" + addrs[i] + ":8000"
+		}
+		dserver := make(map[string]struct{})
+		dserver["dns"] = struct{}{}
+		for _, addr := range addrs {
+			result[addr] = &web.RegisterData{DServers: dserver}
+		}
+		for len(tker.C) > 0 {
+			<-tker.C
+		}
+		return result, nil
 	}
-	for i := range addrs {
-		addrs[i] = "http://" + addrs[i] + ":8000"
-	}
-	dserver := make(map[string]struct{})
-	dserver["dns"] = struct{}{}
-	for _, addr := range addrs {
-		result[addr] = &web.RegisterData{DServers: dserver}
-	}
-	return result, nil
-}
-
-func rpcDNS(group, name string) (map[string]*rpc.RegisterData, error) {
-	result := make(map[string]*rpc.RegisterData)
-	addrs, e := net.LookupHost(name + "-service-headless" + "." + group)
-	if e != nil {
-		log.Error("[rpc.dns] get:", name+"-service-headless", "addrs error:", e)
-		return nil, e
-	}
-	for i := range addrs {
-		addrs[i] = addrs[i] + ":9000"
-	}
-	dserver := make(map[string]struct{})
-	dserver["dns"] = struct{}{}
-	for _, addr := range addrs {
-		result[addr] = &rpc.RegisterData{DServers: dserver}
-	}
-	return result, nil
 }
